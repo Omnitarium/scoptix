@@ -6,7 +6,7 @@ import {
   isUrlExcludeActive,
   normalizeExcludeKeywords,
 } from "@/lib/url-exclude-query";
-import { buildTargetUrlsTabHref, type UrlTabPreserve } from "@/lib/url-tab-params";
+import { buildUrlsTabHref, type UrlTabHrefContext, type UrlTabPreserve } from "@/lib/url-tab-params";
 
 export type SubdomainOption = {
   id: string;
@@ -76,7 +76,7 @@ function IconTrash({ className }: { className?: string }) {
 }
 
 type UrlExcludeBarProps = {
-  targetId: string;
+  hrefContext: UrlTabHrefContext;
   preserve: UrlTabPreserve;
   initialHideSubIds: string[];
   initialHideKw: string[];
@@ -85,7 +85,7 @@ type UrlExcludeBarProps = {
 };
 
 export const UrlExcludeBar = forwardRef<UrlExcludeBarHandle, UrlExcludeBarProps>(function UrlExcludeBar({
-  targetId,
+  hrefContext,
   preserve,
   initialHideSubIds,
   initialHideKw,
@@ -113,7 +113,7 @@ export const UrlExcludeBar = forwardRef<UrlExcludeBarHandle, UrlExcludeBarProps>
   const navigate = useCallback(
     (next: { hideSub: string[]; hideKw: string[] }) => {
       router.push(
-        buildTargetUrlsTabHref(targetId, {
+        buildUrlsTabHref(hrefContext, {
           ...preserve,
           hideSub: next.hideSub,
           hideKw: next.hideKw,
@@ -121,7 +121,7 @@ export const UrlExcludeBar = forwardRef<UrlExcludeBarHandle, UrlExcludeBarProps>
         }),
       );
     },
-    [router, targetId, preserve],
+    [router, hrefContext, preserve],
   );
 
   function openModal() {

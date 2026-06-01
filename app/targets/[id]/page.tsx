@@ -314,7 +314,7 @@ export default async function TargetDetailPage({
               {/* Category filters + search */}
               <div className="border-b border-line px-5 py-4 space-y-3">
                 <UrlFiltersToolbar
-                  targetId={target.id}
+                  hrefContext={{ scope: "target", targetId: target.id }}
                   preserve={urlTabPreserve}
                   initialQuery={q}
                   initialHideSubIds={hideSubIds}

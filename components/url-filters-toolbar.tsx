@@ -4,7 +4,7 @@ import { useMemo, useRef } from "react";
 import { UrlExcludeBar, type SubdomainOption, type UrlExcludeBarHandle } from "@/components/url-exclude-bar";
 import { UrlSearchBar, type UrlSearchBarHandle } from "@/components/url-search-bar";
 import { isUrlSearchQueryActive, parseUrlSearchGroups } from "@/lib/url-search-query";
-import type { UrlTabPreserve } from "@/lib/url-tab-params";
+import type { UrlTabHrefContext, UrlTabPreserve } from "@/lib/url-tab-params";
 
 function SummaryChip({
   label,
@@ -41,7 +41,7 @@ function SummaryChip({
 }
 
 export function UrlFiltersToolbar({
-  targetId,
+  hrefContext,
   preserve,
   initialQuery,
   initialHideSubIds,
@@ -52,7 +52,7 @@ export function UrlFiltersToolbar({
   currentPage,
   totalPages,
 }: {
-  targetId: string;
+  hrefContext: UrlTabHrefContext;
   preserve: UrlTabPreserve;
   initialQuery: string;
   initialHideSubIds: string[];
@@ -91,13 +91,13 @@ export function UrlFiltersToolbar({
         <div className="flex flex-wrap items-start gap-2 lg:justify-end">
           <UrlSearchBar
             ref={searchRef}
-            targetId={targetId}
+            hrefContext={hrefContext}
             preserve={preserve}
             initialQuery={initialQuery}
           />
           <UrlExcludeBar
             ref={hideRef}
-            targetId={targetId}
+            hrefContext={hrefContext}
             preserve={preserve}
             initialHideSubIds={initialHideSubIds}
             initialHideKw={initialHideKw}

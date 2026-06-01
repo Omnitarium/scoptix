@@ -9,7 +9,7 @@ import {
   parseQueryToBuilderRows,
   type SearchBuilderRow,
 } from "@/lib/url-search-query";
-import { buildTargetUrlsTabHref, type UrlTabPreserve } from "@/lib/url-tab-params";
+import { buildUrlsTabHref, type UrlTabHrefContext, type UrlTabPreserve } from "@/lib/url-tab-params";
 
 function IconSearch({ className }: { className?: string }) {
   return (
@@ -75,13 +75,13 @@ export type UrlSearchBarHandle = {
 };
 
 type UrlSearchBarProps = {
-  targetId: string;
+  hrefContext: UrlTabHrefContext;
   preserve: UrlTabPreserve;
   initialQuery: string;
 };
 
 export const UrlSearchBar = forwardRef<UrlSearchBarHandle, UrlSearchBarProps>(function UrlSearchBar({
-  targetId,
+  hrefContext,
   preserve,
   initialQuery,
 }, ref) {
@@ -97,21 +97,17 @@ export const UrlSearchBar = forwardRef<UrlSearchBarHandle, UrlSearchBarProps>(fu
     setAdvRows(parseQueryToBuilderRows(initialQuery));
   }, [initialQuery]);
 
-  const buildHref = useCallback(
-    (q: string) =>
-      buildTargetUrlsTabHref(targetId, {
-        ...preserve,
-        q,
-        page: 1,
-      }),
-    [targetId, preserve],
-  );
-
   const navigate = useCallback(
     (q: string) => {
-      router.push(buildHref(q));
+      router.push(
+        buildUrlsTabHref(hrefContext, {
+          ...preserve,
+          q,
+          page: 1,
+        }),
+      );
     },
-    [router, buildHref],
+    [router, hrefContext, preserve],
   );
 
   function openBuilder() {

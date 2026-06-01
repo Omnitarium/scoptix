@@ -15,6 +15,15 @@ import { ScanDetailHeader } from "@/components/scans/scan-detail-header";
 import { ScanDetailTabs } from "@/components/scans/scan-detail-tabs";
 import { ScanMetricCards } from "@/components/scans/scan-metric-cards";
 import { ScanSummaryTab } from "@/components/scans/scan-summary-tab";
+import { UrlFiltersToolbar } from "@/components/url-filters-toolbar";
+import { urlExcludeWhere, normalizeExcludeKeywords } from "@/lib/url-exclude-query";
+import { urlTextSearchWhere } from "@/lib/url-search-query";
+import {
+  buildObservedUrlsTabHref,
+  parseCsvParam,
+  urlTabPreserveToFixedParams,
+  type UrlTabPreserve,
+} from "@/lib/url-tab-params";
 import { loadScanSummary } from "@/lib/scan-summary";
 import {
   TablePagination,
@@ -124,6 +133,9 @@ export default async function ScanObservedPage({
       : "findings";
   const page = asPosInt(sp(rawSp.page) || null, 1);
   const perPage = normalizePageSize(sp(rawSp.perPage) || null);
+  const q = sp(rawSp.q);
+  const hideSubRaw = parseCsvParam(rawSp.hideSub);
+  const hideKwRaw = parseCsvParam(rawSp.hideKw);
   const categorySlug = (sp(rawSp.cat) || "all").toLowerCase();
   const fType = sp(rawSp.fType) || undefined;
   const fSourceRaw = sp(rawSp.fSource) || undefined;
@@ -384,8 +396,52 @@ export default async function ScanObservedPage({
   if (tab === "findings" && fType) fixedParams.fType = fType;
   if (tab === "findings" && fSource) fixedParams.fSource = fSource;
 
+  const urlSearchFilter = urlTextSearchWhere(q);
+  const hideKw = normalizeExcludeKeywords(hideKwRaw);
+  const validatedHideSubs =
+    tab === "urls" && availability.urls === "ready" && hideSubRaw.length > 0
+      ? await prisma.subdomain.findMany({
+          where: {
+            id: { in: hideSubRaw },
+            observedUrls: { some: { scanJobId: id } },
+          },
+          select: { id: true, hostnameNormalized: true },
+          orderBy: { hostnameNormalized: "asc" },
+        })
+      : [];
+  const hideSubIds = validatedHideSubs.map((s) => s.id);
+  const urlExcludeFilter = urlExcludeWhere(hideSubIds, hideKw);
+
+  const subdomainPickerOptions =
+    tab === "urls" && availability.urls === "ready"
+      ? (
+          await prisma.scanObservedUrl.findMany({
+            where: { scanJobId: id, subdomainId: { not: null } },
+            distinct: ["subdomainId"],
+            select: {
+              subdomain: {
+                select: { id: true, hostnameNormalized: true },
+              },
+            },
+          })
+        )
+          .map((row) => row.subdomain)
+          .filter((s): s is { id: string; hostnameNormalized: string } => s != null)
+          .sort((a, b) => a.hostnameNormalized.localeCompare(b.hostnameNormalized))
+      : [];
+
+  const urlTabPreserve: UrlTabPreserve = {
+    cat: effectiveCategorySlug,
+    perPage,
+    q: q || undefined,
+    hideSub: hideSubIds.length > 0 ? hideSubIds : undefined,
+    hideKw: hideKw.length > 0 ? hideKw : undefined,
+  };
+
   const urlsWhere = {
     scanJobId: id,
+    ...(urlSearchFilter ?? {}),
+    ...(urlExcludeFilter ?? {}),
     ...(activeCategoryId === null
       ? {}
       : activeCategoryId === -1
@@ -503,12 +559,14 @@ export default async function ScanObservedPage({
   ];
 
   function urlFilterHref(nextCategory: string) {
-    const q = new URLSearchParams();
-    q.set("tab", "urls");
-    q.set("perPage", String(perPage));
-    if (nextCategory !== "all") q.set("cat", nextCategory);
-    return `${basePath}?${q.toString()}`;
+    return buildObservedUrlsTabHref(id, {
+      ...urlTabPreserve,
+      cat: nextCategory,
+      page: undefined,
+    });
   }
+
+  const urlFixedParams = urlTabPreserveToFixedParams(urlTabPreserve);
 
   function findingFilterHref(overrides: {
     type?: string;
@@ -842,11 +900,18 @@ export default async function ScanObservedPage({
                         URL snapshot scoped to this scan, independent from current target totals.
                       </div>
                     </div>
-                    <div className="text-[12px] text-muted">
-                      Total: <span className="font-mono text-cream">{urlsTotal.toLocaleString()}</span> · Page{" "}
-                      <span className="font-mono text-cream">{safeUrlsPage.toLocaleString()}</span>/
-                      <span className="font-mono text-cream">{urlsPages.toLocaleString()}</span>
-                    </div>
+                    <UrlFiltersToolbar
+                      hrefContext={{ scope: "observed", scanId: id }}
+                      preserve={urlTabPreserve}
+                      initialQuery={q}
+                      initialHideSubIds={hideSubIds}
+                      initialHideKw={hideKw}
+                      subdomainOptions={subdomainPickerOptions}
+                      resolvedHiddenSubdomains={validatedHideSubs}
+                      totalUrls={urlsTotal}
+                      currentPage={safeUrlsPage}
+                      totalPages={urlsPages}
+                    />
                     <div className="flex flex-wrap gap-2">
                       <Link
                         href={urlFilterHref("all")}
@@ -925,7 +990,7 @@ export default async function ScanObservedPage({
                     totalItems={urlsTotal}
                     perPage={perPage}
                     basePath={basePath}
-                    fixedParams={fixedParams}
+                    fixedParams={urlFixedParams}
                   />
                 </>
               )}
