@@ -37,7 +37,7 @@ export type SummaryChangeLine = {
   dividerBefore?: boolean;
 };
 
-export type SummaryInterestingFinding = {
+export type SummaryLatestFinding = {
   id: string;
   findingType: string;
   url: string;
@@ -51,6 +51,15 @@ export type SummarySourceSlice = {
   color: string;
 };
 
+export type SummaryDiscoveryPoint = {
+  label: string;
+  scanId: string;
+  urlCount: number;
+  findingCount: number;
+  isCurrent: boolean;
+  completedAt: string | null;
+};
+
 export type ScanSummaryData = {
   findingsTop10: SummaryRankRow[];
   findingsTypeTotal: number;
@@ -61,9 +70,10 @@ export type ScanSummaryData = {
     baselineLabel: string | null;
     lines: SummaryChangeLine[];
   };
-  interestingFindings: SummaryInterestingFinding[];
+  latestFindings: SummaryLatestFinding[];
   sources: SummarySourceSlice[];
   urlTotalForSources: number;
+  discoveryTimeline: SummaryDiscoveryPoint[];
 };
 
 function formatDelta(current: number, previous: number | undefined) {
@@ -107,6 +117,10 @@ function buildRankRows(
   });
 }
 
+function formatFindingFoundAt(value: Date) {
+  return value.toISOString().slice(0, 16).replace("T", " ");
+}
+
 function formatEngineLabel(engine: string) {
   if (engine === "VIRUSTOTAL") return "VirusTotal";
   if (engine === "WAYBACK_MACHINE") return "Wayback Machine";
@@ -116,6 +130,97 @@ function formatEngineLabel(engine: string) {
 
 /** Donut segment colors aligned with sampleimg.png (green Wayback, purple VT). */
 const SOURCE_COLORS = ["#22c55e", "#9333ea", "#3b82f6", "#f59e0b"];
+
+const DISCOVERY_MAX_SCANS = 5;
+
+function formatDiscoveryDate(d: Date) {
+  return d.toLocaleDateString("en-GB", { day: "numeric", month: "short" });
+}
+
+function formatDiscoveryTime(d: Date) {
+  return d.toLocaleTimeString("en-GB", { hour: "2-digit", minute: "2-digit", hour12: false });
+}
+
+/** Build labels, appending time when two scans share the same date string. */
+function buildDiscoveryLabels(
+  scans: { completedAt: Date | null; createdAt: Date }[],
+): string[] {
+  const dates = scans.map((s) => s.completedAt ?? s.createdAt);
+  const dateLabels = dates.map(formatDiscoveryDate);
+
+  // Count occurrences of each date label
+  const freq = new Map<string, number>();
+  for (const dl of dateLabels) freq.set(dl, (freq.get(dl) ?? 0) + 1);
+
+  // Append time only for duplicated dates
+  return dateLabels.map((dl, i) =>
+    (freq.get(dl) ?? 0) > 1 ? `${dl} ${formatDiscoveryTime(dates[i])}` : dl,
+  );
+}
+
+async function loadDiscoveryTimeline(
+  targetDomainId: string,
+  currentScanId: string,
+): Promise<SummaryDiscoveryPoint[]> {
+  const completedScans = await prisma.scanJob.findMany({
+    where: {
+      targetDomainId,
+      status: ScanJobStatus.COMPLETED,
+    },
+    orderBy: [{ completedAt: "asc" }, { createdAt: "asc" }],
+    select: {
+      id: true,
+      completedAt: true,
+      createdAt: true,
+      observedUrlCount: true,
+      observedFindingCount: true,
+    },
+  });
+
+  const timelineScans = completedScans.slice(-DISCOVERY_MAX_SCANS);
+  if (timelineScans.length === 0) return [];
+
+  const missingCounts = timelineScans.filter(
+    (scan) => scan.observedUrlCount == null || scan.observedFindingCount == null,
+  );
+
+  const countByScanId = new Map<string, { urls: number; findings: number }>();
+
+  if (missingCounts.length > 0) {
+    const counts = await Promise.all(
+      missingCounts.map(async (scan) => {
+        const [urls, findings] = await Promise.all([
+          scan.observedUrlCount ??
+            (
+              prisma as typeof prisma & {
+                scanObservedUrl: { count: (args: Record<string, unknown>) => Promise<number> };
+              }
+            ).scanObservedUrl.count({ where: { scanJobId: scan.id } }),
+          scan.observedFindingCount ??
+            prisma.analysisFinding.count({ where: { scanJobId: scan.id } }),
+        ]);
+        return { id: scan.id, urls, findings };
+      }),
+    );
+    for (const row of counts) {
+      countByScanId.set(row.id, { urls: row.urls, findings: row.findings });
+    }
+  }
+
+  const labels = buildDiscoveryLabels(timelineScans);
+
+  return timelineScans.map((scan, i) => {
+    const fallback = countByScanId.get(scan.id);
+    return {
+      label: labels[i],
+      scanId: scan.id,
+      urlCount: scan.observedUrlCount ?? fallback?.urls ?? 0,
+      findingCount: scan.observedFindingCount ?? fallback?.findings ?? 0,
+      isCurrent: scan.id === currentScanId,
+      completedAt: scan.completedAt?.toISOString() ?? null,
+    };
+  });
+}
 
 export async function loadScanSummary(
   scanId: string,
@@ -150,7 +255,7 @@ export async function loadScanSummary(
     select: { id: true, completedAt: true, createdAt: true },
   });
 
-  const [findingGroups, urlCategoryGroups, categories, interestingFindings] =
+  const [findingGroups, urlCategoryGroups, categories, latestFindingRows] =
     await Promise.all([
       prisma.analysisFinding.groupBy({
         by: ["findingType"],
@@ -171,7 +276,7 @@ export async function loadScanSummary(
       prisma.analysisFinding.findMany({
         where: { scanJobId: scanId },
         orderBy: { createdAt: "desc" },
-        take: 40,
+        take: 5,
         include: {
           discoveredUrl: { select: { urlText: true } },
         },
@@ -319,26 +424,16 @@ export async function loadScanSummary(
     }
   }
 
-  const priorityPattern =
-    /credential|password|jwt|token|api.?key|secret|private.?key|ssh/i;
-  const interesting = interestingFindings
-    .filter((f) => f.snippet || priorityPattern.test(f.findingType))
-    .sort((a, b) => {
-      const ap = priorityPattern.test(a.findingType) ? 1 : 0;
-      const bp = priorityPattern.test(b.findingType) ? 1 : 0;
-      return bp - ap;
-    })
-    .slice(0, 5)
-    .map((f) => ({
-      id: f.id,
-      findingType: f.findingType,
-      url: f.discoveredUrl.urlText,
-      description: f.snippet
-        ? f.snippet.length > 80
-          ? `${f.snippet.slice(0, 80)}…`
-          : f.snippet
-        : `${f.findingType} detected`,
-    }));
+  const latestFindings = latestFindingRows.map((f) => ({
+    id: f.id,
+    findingType: f.findingType,
+    url: f.discoveredUrl.urlText,
+    description: f.snippet
+      ? f.snippet.length > 80
+        ? `${f.snippet.slice(0, 80)}…`
+        : f.snippet
+      : `Found ${formatFindingFoundAt(f.createdAt)}`,
+  }));
 
   const engineCounts = new Map<string, number>();
   if (availability.urls === "ready") {
@@ -372,14 +467,17 @@ export async function loadScanSummary(
     color: SOURCE_COLORS[i % SOURCE_COLORS.length],
   }));
 
+  const discoveryTimeline = await loadDiscoveryTimeline(targetDomainId, scanId);
+
   return {
     findingsTop10,
     findingsTypeTotal,
     urlCategoriesTop10,
     urlCategoryTotal,
     changes,
-    interestingFindings: interesting,
+    latestFindings,
     sources,
     urlTotalForSources,
+    discoveryTimeline,
   };
 }

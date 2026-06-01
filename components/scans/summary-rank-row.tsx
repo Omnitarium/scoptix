@@ -22,7 +22,11 @@ import type { SummaryRankIconKind } from "@/lib/summary-rank-style";
 import type { SummaryRankRow } from "@/lib/scan-summary";
 
 const rankRowGridClass =
-  "grid grid-cols-[minmax(0,1fr)_2.75rem_5rem_minmax(1.25rem,1fr)] items-center gap-x-2";
+  "grid grid-cols-[minmax(0,1fr)_2.75rem_minmax(0,1fr)] items-center gap-x-2";
+
+/** Change column body: delta value, trend arrow, relative bar. */
+const changeRowGridClass =
+  "grid grid-cols-[2.75rem_0.75rem_minmax(1.25rem,1fr)] items-center gap-x-1.5";
 
 const changeAreaPad = "pl-2.5 sm:pl-3";
 
@@ -92,9 +96,7 @@ export function SummaryRankRow({
       <div className="text-left font-normal text-cream tabular-nums">
         {row.count.toLocaleString()}
       </div>
-      <div
-        className={`grid grid-cols-[1fr_0.75rem] items-center gap-x-1.5 ${changeAreaPad}`}
-      >
+      <div className={`${changeRowGridClass} ${changeAreaPad}`}>
         <span
           className={[
             "text-left font-normal tabular-nums",
@@ -107,7 +109,7 @@ export function SummaryRankRow({
         >
           {row.change}
         </span>
-        <span className="flex size-3 items-center justify-center">
+        <span className="flex size-3 shrink-0 items-center justify-center justify-self-center">
           {row.trend === "up" ? (
             <IconArrowUp className="size-3 text-green-600" aria-hidden />
           ) : row.trend === "down" ? (
@@ -116,26 +118,26 @@ export function SummaryRankRow({
             <IconMinus className="size-3 text-muted" aria-hidden />
           )}
         </span>
-      </div>
-      <div
-        className="h-1.5 min-w-[1.25rem] rounded-full bg-line/30"
-        role="presentation"
-        aria-hidden
-      >
         <div
-          className={[
-            "h-full rounded-full transition-[width]",
-            row.barBackground ? "" : row.barFill ? "" : row.barColor,
-          ].join(" ")}
-          style={{
-            width: `${row.barWidthPercent}%`,
-            ...(row.barBackground
-              ? { background: row.barBackground, boxShadow: row.barShadow }
-              : row.barFill
-                ? { backgroundColor: row.barFill }
-                : {}),
-          }}
-        />
+          className="h-1.5 min-w-[1.25rem] rounded-full bg-line/30"
+          role="presentation"
+          aria-hidden
+        >
+          <div
+            className={[
+              "h-full rounded-full transition-[width]",
+              row.barBackground ? "" : row.barFill ? "" : row.barColor,
+            ].join(" ")}
+            style={{
+              width: `${row.barWidthPercent}%`,
+              ...(row.barBackground
+                ? { background: row.barBackground, boxShadow: row.barShadow }
+                : row.barFill
+                  ? { backgroundColor: row.barFill }
+                  : {}),
+            }}
+          />
+        </div>
       </div>
     </div>
   );
@@ -154,8 +156,9 @@ export function SummaryRankTableHeader({
     >
       <span>{labelCol}</span>
       <span className="text-left">{countLabel}</span>
-      <span className={`text-left leading-tight ${changeAreaPad}`}>Change (vs last scan)</span>
-      <span aria-hidden />
+      <div className={`${changeRowGridClass} ${changeAreaPad}`}>
+        <span className="col-span-3 whitespace-nowrap">Change (vs last scan)</span>
+      </div>
     </div>
   );
 }

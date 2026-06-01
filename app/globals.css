@@ -20,6 +20,7 @@
   --color-accent: #4dc4b2;
   --color-accent-dim: #2f9d8c;
   --color-warn: #c4b5a8;
+  --chart-finding: #a78bfa;
   --shadow-glass: 0 8px 32px rgba(0, 0, 0, 0.45), inset 0 1px 0 rgba(255, 255, 255, 0.06);
   --shadow-lift: 0 4px 24px rgba(0, 0, 0, 0.35);
   --shadow-clay: 0 4px 0 rgba(0, 0, 0, 0.35), 0 12px 40px rgba(77, 196, 178, 0.16);
@@ -53,6 +54,7 @@
   --color-accent: #279e8f;
   --color-accent-dim: #1e7f72;
   --color-warn: #5a6a7a;
+  --chart-finding: #7c3aed;
   --shadow-glass: 0 10px 36px rgba(30, 60, 90, 0.07), inset 0 1px 0 rgba(255, 255, 255, 0.98);
   --shadow-lift: 0 4px 24px rgba(30, 60, 90, 0.08);
   --shadow-clay: 0 4px 0 rgba(0, 0, 0, 0.1), 0 12px 40px rgba(39, 158, 143, 0.2);
@@ -87,6 +89,7 @@
   --color-accent: #16a34a;
   --color-accent-dim: #15803d;
   --color-warn: #b45309;
+  --chart-finding: #7c3aed;
   --shadow-glass: 0 1px 2px rgba(0, 0, 0, 0.04);
   --shadow-lift: 0 1px 3px rgba(0, 0, 0, 0.08);
   --shadow-clay: 0 1px 2px rgba(22, 163, 74, 0.12);
@@ -187,7 +190,7 @@ body {
 
   [data-theme="dark"] .scx-summary-inner-item,
   [data-theme="light-mist"] .scx-summary-inner-item {
-    background: rgba(0, 0, 0, 0.22);
+    background: rgba(255, 255, 255, 0.04);
     border-color: var(--glass-panel-border);
   }
 
@@ -243,7 +246,7 @@ body {
   }
 
   .scx-finding-type-badge {
-    @apply shrink-0 rounded-md px-2 py-0.5 text-[10px] font-bold uppercase;
+    @apply min-w-0 truncate rounded-md px-2 py-0.5 text-[10px] font-bold uppercase;
     background: color-mix(in srgb, #9333ea 16%, transparent);
     color: color-mix(in srgb, #9333ea 72%, var(--color-cream));
   }

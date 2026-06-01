@@ -597,7 +597,7 @@ export default async function ScanObservedPage({
         compareHref={tabHref("compare")}
       />
 
-      <div className="min-h-0 flex-1 overflow-y-auto bg-void px-6 py-5">
+      <div className="min-h-0 flex-1 overflow-y-auto px-6 py-5">
         <ScanMetricCards metrics={metricCards} />
 
         <div className="mt-6">

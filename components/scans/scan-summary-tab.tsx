@@ -1,4 +1,5 @@
 import Link from "next/link";
+import { DiscoveryOverTimeChart } from "@/components/scans/discovery-over-time-chart";
 import { SourcesDonutChart } from "@/components/scans/sources-donut-chart";
 import { SummaryRankRow, SummaryRankTableHeader } from "@/components/scans/summary-rank-row";
 import {
@@ -15,6 +16,10 @@ const summaryFooterLinkClass =
   "inline-flex items-center text-[12px] font-medium text-accent hover:text-accent-dim";
 
 const summaryCardTitleClass = "text-sm font-bold text-cream";
+
+/** Fixed-width column for Changes / Sources; other columns grow with viewport. */
+const summaryFixedColGridClass =
+  "grid grid-cols-1 gap-4 xl:grid-cols-[minmax(0,1fr)_minmax(0,1fr)_355px]";
 
 function ChangeIcon({ icon, tone }: { icon: SummaryChangeLine["icon"]; tone: SummaryChangeLine["tone"] }) {
   const cls = "mr-3 size-4 shrink-0";
@@ -55,7 +60,7 @@ export function ScanSummaryTab({
 }) {
   return (
     <div className="space-y-4">
-      <div className="grid grid-cols-1 gap-4 xl:grid-cols-3">
+      <div className={summaryFixedColGridClass}>
         <section className="scx-summary-card flex h-full flex-col">
           <h2 className={`mb-2.5 ${summaryCardTitleClass}`}>Findings by Type (Top 10)</h2>
           <SummaryRankTableHeader labelCol="Type" countLabel="Count" />
@@ -133,29 +138,48 @@ export function ScanSummaryTab({
         </section>
       </div>
 
-      <div className="grid grid-cols-1 gap-4 xl:grid-cols-3">
-        <section className="scx-summary-card xl:col-span-2">
-          <div className="mb-2.5 flex items-center justify-between gap-2">
-            <h2 className={summaryCardTitleClass}>Top interesting findings</h2>
+      <div className={summaryFixedColGridClass}>
+        <section className="scx-summary-card flex min-h-[260px] flex-col">
+          <DiscoveryOverTimeChart points={data.discoveryTimeline} />
+        </section>
+
+        <section className="scx-summary-card min-w-0 overflow-hidden">
+          <div className="mb-2.5 flex min-w-0 items-center justify-between gap-2">
+            <h2 className={`min-w-0 truncate ${summaryCardTitleClass}`}>Last 5 Findings</h2>
             <Link
               href={`${basePath}?tab=findings`}
-              className={summaryFooterLinkClass}
+              className={`${summaryFooterLinkClass} shrink-0`}
             >
               View all
-              <IconArrowUpRight className="ml-1 size-3.5 rotate-90" />
+              <IconArrowRight className="ml-1 size-3.5" />
             </Link>
           </div>
-          <div className="space-y-2">
-            {data.interestingFindings.length === 0 ? (
-              <p className="py-3 text-center text-[12px] text-muted">No findings to highlight yet.</p>
+          <div className="min-w-0 space-y-2 overflow-hidden">
+            {data.latestFindings.length === 0 ? (
+              <p className="py-3 text-center text-[12px] text-muted">No findings in this scan yet.</p>
             ) : (
-              data.interestingFindings.map((item) => (
-                <div key={item.id} className="scx-summary-inner-item flex items-start justify-between gap-2">
+              data.latestFindings.map((item) => (
+                <div key={item.id} className="scx-summary-inner-item min-w-0 overflow-hidden">
                   <div className="flex min-w-0 items-start gap-3">
-                    <span className="scx-finding-type-badge">{item.findingType}</span>
-                    <div className="min-w-0">
-                      <div className="truncate text-[12px] font-medium text-cream">{item.url}</div>
-                      <div className="mt-0.5 text-[11px] text-muted">{item.description}</div>
+                    <span
+                      className="scx-finding-type-badge max-w-[38%] truncate"
+                      title={item.findingType}
+                    >
+                      {item.findingType}
+                    </span>
+                    <div className="min-w-0 flex-1 overflow-hidden">
+                      <div
+                        className="truncate text-[12px] font-medium text-cream"
+                        title={item.url}
+                      >
+                        {item.url}
+                      </div>
+                      <div
+                        className="mt-0.5 truncate text-[11px] text-muted"
+                        title={item.description}
+                      >
+                        {item.description}
+                      </div>
                     </div>
                   </div>
                 </div>
