@@ -341,7 +341,6 @@ export async function loadScanSummary(
       ? await countObservedUrlsByCategory(prisma, previousScan.id)
       : null;
 
-  const categoryById = new Map(categories.map((c) => [c.id, c]));
   const previousFindingsByType = new Map(
     previousFindingGroups.map((g) => [g.findingType, g._count._all]),
   );

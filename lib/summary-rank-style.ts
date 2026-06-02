@@ -198,7 +198,7 @@ const CATEGORY_RANK_BAR: Pick<RankVisual, "barColor" | "barBackground" | "barSha
   barShadow: CATEGORY_BAR_SHADOW,
 };
 
-export function resolveCategoryRankVisual(_label: string, _index: number): RankVisual {
+export function resolveCategoryRankVisual(): RankVisual {
   return {
     icon: "folder",
     iconBg: "",
