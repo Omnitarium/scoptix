@@ -40,6 +40,9 @@ const SCAN_ENGINE_OPTIONS = [
   },
 ] as const;
 
+const settingsPrimaryButtonClass =
+  "shadow-clay mt-4 w-full rounded-xl bg-gradient-to-r from-accent to-accent-dim px-4 py-3 text-[13px] font-semibold text-void disabled:opacity-60";
+
 /** Valid `tab` query values for `/settings`. */
 export const SETTINGS_TAB_QUERY = {
   network: "network",
@@ -385,7 +388,7 @@ export function SettingsClient() {
               : "text-muted hover:bg-[var(--nav-hover-bg)] hover:text-cream",
           ].join(" ")}
         >
-          API &amp; network
+          API &amp; Network
         </Link>
         <Link
           href={`/settings?tab=${SETTINGS_TAB_QUERY.extensions}`}
@@ -401,7 +404,7 @@ export function SettingsClient() {
               : "text-muted hover:bg-[var(--nav-hover-bg)] hover:text-cream",
           ].join(" ")}
         >
-          Extension categories
+          Extension Categories
         </Link>
       </div>
 
@@ -454,7 +457,7 @@ export function SettingsClient() {
                       "group rounded-xl border p-4 text-left transition-colors disabled:opacity-60",
                       selected
                         ? "border-accent/40 bg-accent/10 ring-1 ring-accent/25"
-                        : "border-line bg-black/10 hover:border-line/80 hover:bg-[var(--nav-hover-bg)]",
+                        : "border-line bg-[var(--tab-bg)] hover:border-line/80 hover:bg-[var(--nav-hover-bg)]",
                     ].join(" ")}
                   >
                     <div className="flex items-start justify-between gap-3">
@@ -471,7 +474,7 @@ export function SettingsClient() {
                           "mt-0.5 flex size-5 shrink-0 items-center justify-center rounded-md border text-[10px] font-bold transition-colors",
                           selected
                             ? "border-accent/50 bg-accent/20 text-accent"
-                            : "border-line bg-black/20 text-transparent group-hover:border-muted/40",
+                            : "border-line bg-[var(--tab-bg)] text-transparent group-hover:border-muted/40",
                         ].join(" ")}
                         aria-hidden
                       >
@@ -505,7 +508,7 @@ export function SettingsClient() {
               type="button"
               onClick={() => void saveProxy()}
               disabled={busy}
-              className="mt-4 w-full rounded-xl border border-line px-4 py-3 text-[13px] text-muted hover:bg-[var(--nav-hover-bg)] hover:text-cream disabled:opacity-60"
+              className={settingsPrimaryButtonClass}
             >
               Save proxy
             </button>
@@ -540,9 +543,16 @@ export function SettingsClient() {
 
             <button
               type="button"
-              onClick={() => void addKey()}
-              disabled={!canAdd}
-              className="shadow-clay mt-4 w-full rounded-xl bg-gradient-to-r from-accent to-accent-dim px-4 py-3 text-[13px] font-semibold text-void disabled:opacity-60"
+              onClick={() => {
+                if (!canAdd) return;
+                void addKey();
+              }}
+              disabled={busy}
+              aria-disabled={!canAdd}
+              className={[
+                settingsPrimaryButtonClass,
+                !canAdd && !busy ? "cursor-not-allowed" : "",
+              ].join(" ")}
             >
               Add key
             </button>

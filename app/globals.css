@@ -95,7 +95,7 @@
   --shadow-clay: 0 1px 2px rgba(22, 163, 74, 0.12);
   --bg-ambient: none;
   --glass-panel-bg: #ffffff;
-  --glass-panel-border: #f3f4f6;
+  --glass-panel-border: var(--color-line);
   --glass-sidebar-bg: #ffffff;
   --glass-sidebar-border: #e5e7eb;
   --noise-opacity: 0;
@@ -284,7 +284,8 @@ body {
     background: rgba(0, 0, 0, 0.2);
   }
 
-  [data-theme="light-mist"] .settings-tablist {
+  [data-theme="light-mist"] .settings-tablist,
+  [data-theme="scoptix"] .settings-tablist {
     background: rgba(255, 255, 255, 0.86);
     border-color: rgba(80, 110, 140, 0.16);
     box-shadow: 0 1px 2px rgba(30, 60, 90, 0.06);
@@ -294,7 +295,8 @@ body {
     background: rgba(0, 0, 0, 0.2);
   }
 
-  [data-theme="light-mist"] .dashboard-range-picker {
+  [data-theme="light-mist"] .dashboard-range-picker,
+  [data-theme="scoptix"] .dashboard-range-picker {
     background: rgba(255, 255, 255, 0.86);
     border-color: rgba(80, 110, 140, 0.16);
     box-shadow: 0 1px 2px rgba(30, 60, 90, 0.06);
@@ -306,7 +308,8 @@ body {
     -webkit-backdrop-filter: blur(16px);
   }
 
-  [data-theme="light-mist"] .dashboard-range-menu {
+  [data-theme="light-mist"] .dashboard-range-menu,
+  [data-theme="scoptix"] .dashboard-range-menu {
     background: rgba(255, 255, 255, 0.97);
     border-color: rgba(80, 110, 140, 0.18);
   }
@@ -321,7 +324,8 @@ body {
     background: rgba(0, 0, 0, 0.25);
   }
 
-  [data-theme="light-mist"] .settings-input-field {
+  [data-theme="light-mist"] .settings-input-field,
+  [data-theme="scoptix"] .settings-input-field {
     background: rgba(255, 255, 255, 0.92);
     border-color: rgba(80, 110, 140, 0.18);
     box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.98);
@@ -343,7 +347,8 @@ body {
     margin: 0;
   }
 
-  [data-theme="light-mist"] .ui-input-field {
+  [data-theme="light-mist"] .ui-input-field,
+  [data-theme="scoptix"] .ui-input-field {
     background: rgba(255, 255, 255, 0.92);
     border-color: rgba(80, 110, 140, 0.18);
     box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.98);
@@ -403,7 +408,8 @@ body {
       0 0 0 1px color-mix(in oklch, var(--color-accent) 12%, transparent);
   }
 
-  [data-theme="light-mist"] .extension-category-card {
+  [data-theme="light-mist"] .extension-category-card,
+  [data-theme="scoptix"] .extension-category-card {
     background: rgba(255, 255, 255, 0.88);
     border: 1px solid rgba(80, 110, 140, 0.16);
     box-shadow:
@@ -411,7 +417,8 @@ body {
       inset 0 1px 0 rgba(255, 255, 255, 0.98);
   }
 
-  [data-theme="light-mist"] .extension-category-card:hover {
+  [data-theme="light-mist"] .extension-category-card:hover,
+  [data-theme="scoptix"] .extension-category-card:hover {
     border-color: color-mix(in oklch, var(--color-accent) 42%, rgba(80, 110, 140, 0.18));
     box-shadow:
       0 4px 22px rgba(30, 60, 90, 0.07),
@@ -425,7 +432,8 @@ body {
     background: color-mix(in oklch, var(--color-accent) 5.5%, transparent);
   }
 
-  [data-theme="light-mist"] .extension-add-category-panel {
+  [data-theme="light-mist"] .extension-add-category-panel,
+  [data-theme="scoptix"] .extension-add-category-panel {
     background: color-mix(in oklch, var(--color-accent) 9%, transparent);
     border-color: color-mix(in oklch, var(--color-accent) 22%, rgba(80, 110, 140, 0.22));
   }
@@ -450,12 +458,14 @@ body {
     box-shadow: 0 0 0 1px color-mix(in oklch, var(--color-accent) 22%, transparent);
   }
 
-  [data-theme="light-mist"] .extension-input-field {
+  [data-theme="light-mist"] .extension-input-field,
+  [data-theme="scoptix"] .extension-input-field {
     background: rgba(255, 255, 255, 0.97);
     border: 1px solid var(--color-line);
   }
 
-  [data-theme="light-mist"] .extension-input-field:focus {
+  [data-theme="light-mist"] .extension-input-field:focus,
+  [data-theme="scoptix"] .extension-input-field:focus {
     border-color: color-mix(in oklch, var(--color-accent) 38%, var(--color-line));
     box-shadow: 0 0 0 1px color-mix(in oklch, var(--color-accent) 18%, transparent);
   }
@@ -478,11 +488,13 @@ body {
     color: var(--color-cream);
   }
 
-  [data-theme="light-mist"] .extension-suffix-add-btn {
+  [data-theme="light-mist"] .extension-suffix-add-btn,
+  [data-theme="scoptix"] .extension-suffix-add-btn {
     background: rgba(255, 255, 255, 0.55);
   }
 
-  [data-theme="light-mist"] .extension-suffix-add-btn:hover:not(:disabled) {
+  [data-theme="light-mist"] .extension-suffix-add-btn:hover:not(:disabled),
+  [data-theme="scoptix"] .extension-suffix-add-btn:hover:not(:disabled) {
     background: #fff;
     color: var(--color-cream);
   }
@@ -513,14 +525,16 @@ body {
     box-shadow: inset 0 1px 0 color-mix(in srgb, var(--color-accent) 20%, transparent);
   }
 
-  [data-theme="light-mist"] .extension-suffix-pill {
+  [data-theme="light-mist"] .extension-suffix-pill,
+  [data-theme="scoptix"] .extension-suffix-pill {
     color: var(--color-accent);
     border: 1px solid color-mix(in srgb, var(--color-accent) 32%, transparent);
     background: color-mix(in srgb, var(--color-accent) 10%, transparent);
     box-shadow: inset 0 1px 0 color-mix(in srgb, var(--color-accent) 8%, transparent);
   }
 
-  [data-theme="light-mist"] .extension-suffix-pill:hover {
+  [data-theme="light-mist"] .extension-suffix-pill:hover,
+  [data-theme="scoptix"] .extension-suffix-pill:hover {
     border-color: color-mix(in srgb, var(--color-accent) 42%, transparent);
     background: color-mix(in srgb, var(--color-accent) 15%, transparent);
     box-shadow: inset 0 1px 0 color-mix(in srgb, var(--color-accent) 12%, transparent);
@@ -544,11 +558,13 @@ body {
     background: color-mix(in srgb, var(--color-accent) 22%, transparent);
   }
 
-  [data-theme="light-mist"] .extension-suffix-pill-remove {
+  [data-theme="light-mist"] .extension-suffix-pill-remove,
+  [data-theme="scoptix"] .extension-suffix-pill-remove {
     color: color-mix(in srgb, var(--color-muted) 55%, var(--color-accent) 45%);
   }
 
-  [data-theme="light-mist"] .extension-suffix-pill-remove:hover:not(:disabled) {
+  [data-theme="light-mist"] .extension-suffix-pill-remove:hover:not(:disabled),
+  [data-theme="scoptix"] .extension-suffix-pill-remove:hover:not(:disabled) {
     color: var(--color-accent-dim);
     background: color-mix(in srgb, var(--color-accent) 14%, transparent);
   }
@@ -566,7 +582,8 @@ body {
     background: rgba(0, 0, 0, 0.2);
   }
 
-  [data-theme="light-mist"] .api-key-usage-pill {
+  [data-theme="light-mist"] .api-key-usage-pill,
+  [data-theme="scoptix"] .api-key-usage-pill {
     border-radius: 9999px;
     color: var(--color-muted);
     border: 1px solid color-mix(in srgb, var(--color-accent) 20%, rgba(80, 110, 140, 0.14));
