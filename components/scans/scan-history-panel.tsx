@@ -22,7 +22,10 @@ const STATUS_BOX_CLASS =
   "inline-flex rounded-md px-2 py-0.5 text-[10px] font-semibold uppercase tracking-normal";
 
 const SCAN_HISTORY_TABLE_GRID_CLASS =
-  "lg:grid-cols-[2.25rem_minmax(0,1.25fr)_minmax(8rem,max-content)_minmax(0,7.75rem)_minmax(7rem,0.85fr)_5rem_minmax(6.5rem,1fr)_minmax(6.5rem,1fr)_2.5rem]";
+  "lg:grid-cols-[2.25rem_minmax(0,1.25fr)_minmax(8rem,max-content)_minmax(0,9.25rem)_minmax(5.5rem,0.75fr)_5rem_minmax(6.5rem,1fr)_minmax(6.5rem,1fr)_2.5rem]";
+
+/** Spacing between columns without grid gap (gap would show through header bg). */
+const SCAN_SUBGRID_ROW_CLASS = "grid grid-cols-subgrid [&>*]:pr-3 [&>*:last-child]:pr-0";
 
 const STATUS_COL_CLASS = "justify-self-start";
 
@@ -205,8 +208,13 @@ export function ScanHistoryPanel({ scans }: { scans: ScanHistoryRow[] }) {
         })}
       </div>
 
-      <div className={`hidden lg:grid ${SCAN_HISTORY_TABLE_GRID_CLASS} lg:gap-x-3 lg:px-5`}>
-        <div className="col-span-full grid grid-cols-subgrid gap-x-3 border-b border-line bg-[var(--table-header-bg)] py-2.5 text-[10px] font-semibold uppercase tracking-wider text-muted">
+      <div className={`hidden lg:grid ${SCAN_HISTORY_TABLE_GRID_CLASS} lg:px-5`}>
+        <div
+          className={[
+            "col-span-full -mx-5 border-b border-line bg-[var(--table-header-bg)] px-5 py-2.5 text-[10px] font-semibold uppercase tracking-wider text-muted",
+            SCAN_SUBGRID_ROW_CLASS,
+          ].join(" ")}
+        >
           <div className="flex items-center">
             <input
               type="checkbox"
@@ -233,7 +241,10 @@ export function ScanHistoryPanel({ scans }: { scans: ScanHistoryRow[] }) {
           return (
             <div
               key={scan.id}
-              className="col-span-full grid grid-cols-subgrid items-center gap-x-3 border-b border-line py-3 last:border-b-0"
+              className={[
+                "col-span-full items-center border-b border-line py-3 last:border-b-0",
+                SCAN_SUBGRID_ROW_CLASS,
+              ].join(" ")}
             >
               <div className="flex items-center">
                 <input

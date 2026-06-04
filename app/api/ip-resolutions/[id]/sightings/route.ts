@@ -45,6 +45,7 @@ export async function GET(
     const ipResolution = await prisma.ipResolution.findUnique({
       where: { id },
       select: {
+        targetDomainId: true,
         ipAddress: true,
         latestResolvedAt: true,
         hostnameCount: true,
@@ -74,6 +75,7 @@ export async function GET(
     return NextResponse.json({
       scope: scanJobId ? "scan" : "target",
       scanJobId,
+      targetDomainId: ipResolution.targetDomainId,
       ipAddress: ipResolution.ipAddress,
       summary: {
         firstResolvedAt: summary.firstResolvedAt?.toISOString() ?? null,

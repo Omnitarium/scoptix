@@ -1,3 +1,6 @@
+"use client";
+
+import { useState } from "react";
 import type { SummarySourceSlice } from "@/lib/scan-summary";
 import {
   DonutCircleClip,
@@ -51,6 +54,29 @@ const CHART_SIZE = {
   sm: { box: "size-36", total: "text-base" },
 } as const;
 
+function DonutSliceTooltip({ slice }: { slice: SummarySourceSlice }) {
+  return (
+    <div
+      className="pointer-events-none absolute left-1/2 top-0 z-20 -translate-x-1/2 -translate-y-[calc(100%+6px)] rounded-lg border border-line/80 px-2.5 py-1.5 text-[10px] shadow-lg backdrop-blur-md"
+      style={{
+        background: "var(--glass-panel-bg)",
+        boxShadow: "var(--shadow-glass)",
+      }}
+      role="tooltip"
+    >
+      <div className="flex items-center gap-1.5 whitespace-nowrap">
+        <span
+          className="size-2 shrink-0 rounded-full"
+          style={{ backgroundColor: slice.color }}
+          aria-hidden
+        />
+        <span className="font-semibold text-cream">{slice.label}</span>
+        <span className="font-semibold tabular-nums text-cream">{slice.count.toLocaleString()}</span>
+      </div>
+    </div>
+  );
+}
+
 export function AccentDonutChart({
   slices,
   total,
@@ -70,6 +96,7 @@ export function AccentDonutChart({
 }) {
   const innerR = RING_INNER[ring];
   const dim = CHART_SIZE[size];
+  const [hovered, setHovered] = useState<SummarySourceSlice | null>(null);
 
   let cursor = 0;
   const segments = slices.map((slice) => {
@@ -79,7 +106,7 @@ export function AccentDonutChart({
     let endDeg = (cursor / 100) * 360;
     if (endDeg - startDeg >= 359.99) endDeg = startDeg + 359.99;
     return {
-      key: slice.label,
+      slice,
       path: donutSegmentPath(startDeg, endDeg, innerR),
       fill: slice.color,
     };
@@ -92,8 +119,10 @@ export function AccentDonutChart({
         dim.box,
       ].join(" ")}
       role="img"
-      aria-label={`${centerLabel}: ${slices.map((s) => `${s.label} ${s.percent}%`).join(", ")}`}
+      aria-label={`${centerLabel}: ${slices.map((s) => `${s.label} ${s.count.toLocaleString()}`).join(", ")}`}
+      onMouseLeave={() => setHovered(null)}
     >
+      {hovered ? <DonutSliceTooltip slice={hovered} /> : null}
       <svg viewBox={`0 0 ${SIZE} ${SIZE}`} className="size-full" aria-hidden>
         <defs>
           <DonutCircleClip id={CLIP_PATH_ID} />
@@ -101,7 +130,7 @@ export function AccentDonutChart({
         </defs>
         <g clipPath={`url(#${CLIP_PATH_ID})`}>
           {segments.map((seg) => (
-            <g key={seg.key}>
+            <g key={seg.slice.label}>
               {texture ? (
                 <DonutTexturedSegment
                   path={seg.path}
@@ -111,12 +140,19 @@ export function AccentDonutChart({
               ) : (
                 <path d={seg.path} fill={seg.fill} />
               )}
+              <path
+                d={seg.path}
+                fill="transparent"
+                className="cursor-pointer"
+                onMouseEnter={() => setHovered(seg.slice)}
+                aria-hidden
+              />
             </g>
           ))}
         </g>
       </svg>
       <div
-        className="scx-donut-center absolute flex flex-col items-center justify-center rounded-full bg-lift"
+        className="scx-donut-center pointer-events-none absolute flex flex-col items-center justify-center rounded-full bg-lift"
         style={{ inset: centerInsetPercent(innerR) }}
       >
         <span className={[dim.total, "font-bold leading-none text-cream tabular-nums"].join(" ")}>

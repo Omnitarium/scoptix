@@ -65,6 +65,7 @@ export function DonutTexturedSegment({
         d={path}
         fill={`url(#${patternId})`}
         className="donut-texture-layer"
+        pointerEvents="none"
       />
     </>
   );

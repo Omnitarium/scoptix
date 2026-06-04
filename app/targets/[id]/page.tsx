@@ -36,7 +36,7 @@ import {
   IconServer,
 } from "@/components/ui-icons";
 import { formatScanDateTime, formatScanDuration } from "@/lib/scan-format";
-import { canViewPartialObservedResults } from "@/lib/scan-observed";
+import { canViewPartialObservedResults, getObservedAvailability } from "@/lib/scan-observed";
 import { parseIpTableSort, targetIpOrderBy } from "@/lib/ip-table-sort";
 import {
   countDedupedTargetFindings,
@@ -64,6 +64,21 @@ function sp(v: string | string[] | undefined): string {
 
 function countLabel(value: number | null) {
   return value == null ? "—" : value.toLocaleString();
+}
+
+function targetScanListMetrics(scan: {
+  observedVersion: number | null;
+  observedUrlCount: number | null;
+  observedFindingCount: number | null;
+  observedSubdomainCount: number | null;
+}) {
+  const availability = getObservedAvailability(scan);
+  return {
+    subdomainsWithUrls:
+      availability.subdomains === "ready" ? countLabel(scan.observedSubdomainCount) : "—",
+    urls: availability.urls === "ready" ? countLabel(scan.observedUrlCount) : "—",
+    findings: countLabel(scan.observedFindingCount),
+  };
 }
 
 export default async function TargetDetailPage({
@@ -287,6 +302,18 @@ export default async function TargetDetailPage({
           where: { targetDomainId: target.id },
           orderBy: { createdAt: "desc" },
           take: 100,
+          select: {
+            id: true,
+            status: true,
+            phase: true,
+            progressCurrent: true,
+            progressTotal: true,
+            createdAt: true,
+            observedVersion: true,
+            observedUrlCount: true,
+            observedFindingCount: true,
+            observedSubdomainCount: true,
+          },
         })
       : [];
 
@@ -392,6 +419,13 @@ export default async function TargetDetailPage({
       label: "Subdomains (with URLs)",
     },
     {
+      icon: IconGlobe,
+      iconBg: "scx-metric-icon-badge--success",
+      iconColor: "",
+      value: countLabel(target.cachedSubdomainCount),
+      label: "Subdomains (total)",
+    },
+    {
       icon: IconServer,
       iconBg: "scx-metric-icon-badge--success",
       iconColor: "",
@@ -418,15 +452,6 @@ export default async function TargetDetailPage({
       iconColor: "",
       value: countLabel(categorizedUrlCount),
       label: "Categories",
-    },
-    {
-      icon: IconClock,
-      iconBg: "scx-metric-icon-badge--success",
-      iconColor: "",
-      value: formatScanDuration(latestCompletedScan?.startedAt, latestCompletedScan?.completedAt),
-      label: "Scan duration",
-      trend: latestCompletedScan ? "Latest completed scan" : undefined,
-      trendColor: "text-muted",
     },
   ];
 
@@ -747,49 +772,105 @@ export default async function TargetDetailPage({
           {/* ════════ Scans Tab ════════ */}
           {tab === "scans" && (
             <div className="glass-panel overflow-hidden rounded-2xl">
-              <div className="hidden border-b border-line bg-[var(--table-header-bg)] px-5 py-2.5 text-[10px] font-semibold uppercase tracking-wider text-muted sm:grid sm:grid-cols-12 sm:gap-3">
-                <div className="col-span-3">Status</div>
-                <div className="col-span-3">Phase</div>
-                <div className="col-span-3">Progress</div>
-                <div className="col-span-3 text-right">Created</div>
+              <div className="border-b border-line px-5 py-4">
+                <ScanPanelHeading
+                  title="Scans for this target"
+                  description="Observed counts per scan: subdomains that have URLs in the snapshot, total URLs, and deduplicated findings."
+                />
               </div>
-              <div className="divide-y divide-line">
-                {scanJobs.length === 0 ? (
-                  <div className="px-5 py-8 text-center text-[13px] text-muted">No scans yet.</div>
-                ) : (
-                  scanJobs.map((s) => {
-                    const href = canViewPartialObservedResults(s)
-                      ? `/scans/${s.id}/observed`
-                      : `/scans/${s.id}`;
+              <div className="min-w-0 overflow-x-auto">
+                <div className="min-w-[640px]">
+                  <div className="hidden border-b border-line bg-[var(--table-header-bg)] px-5 py-2.5 text-[10px] font-semibold uppercase tracking-wider text-muted sm:grid sm:grid-cols-12 sm:gap-3">
+                    <div className="col-span-2">Status</div>
+                    <div
+                      className="col-span-2"
+                      title="Subdomains that have URLs in this scan (observed snapshot)"
+                    >
+                      Subdomains (URLs)
+                    </div>
+                    <div className="col-span-2">URLs</div>
+                    <div className="col-span-2">Findings</div>
+                    <div className="col-span-2">Phase</div>
+                    <div className="col-span-2">Created</div>
+                  </div>
+                  <div className="divide-y divide-line">
+                    {scanJobs.length === 0 ? (
+                      <div className="px-5 py-8 text-center text-[13px] text-muted">No scans yet.</div>
+                    ) : (
+                      scanJobs.map((s) => {
+                        const href = canViewPartialObservedResults(s)
+                          ? `/scans/${s.id}/observed`
+                          : `/scans/${s.id}`;
+                        const metrics = targetScanListMetrics(s);
+                        const createdLabel = s.createdAt
+                          .toISOString()
+                          .slice(0, 16)
+                          .replace("T", " ");
 
-                    return (
-                      <Link
-                        key={s.id}
-                        href={href}
-                        className="flex flex-col gap-1 px-5 py-3 transition-colors hover:bg-white/[0.03] sm:grid sm:grid-cols-12 sm:items-center sm:gap-3"
-                      >
-                        <div className="col-span-3">
-                          <span className={[
-                            "inline-block rounded-md px-2 py-0.5 text-[10px] font-semibold uppercase",
-                            s.status === "COMPLETED" ? "bg-accent/15 text-accent" :
-                            s.status === "RUNNING" ? "bg-accent/25 text-cream" :
-                            s.status === "FAILED" ? "bg-warn/15 text-warn" :
-                            "bg-muted/15 text-muted",
-                          ].join(" ")}>
-                            {s.status}
-                          </span>
-                        </div>
-                        <div className="col-span-3 font-mono text-[11px] text-muted">{s.phase ?? "—"}</div>
-                        <div className="col-span-3 font-mono text-[11px] text-muted">
-                          {(s.progressCurrent ?? 0).toLocaleString()}/{(s.progressTotal ?? 0).toLocaleString()}
-                        </div>
-                        <div className="col-span-3 text-right font-mono text-[11px] text-muted">
-                          {s.createdAt.toISOString().slice(0, 16).replace("T", " ")}
-                        </div>
-                      </Link>
-                    );
-                  })
-                )}
+                        return (
+                          <Link
+                            key={s.id}
+                            href={href}
+                            className="flex flex-col gap-2 px-5 py-3 transition-colors hover:bg-white/[0.03] sm:grid sm:grid-cols-12 sm:items-center sm:gap-3"
+                          >
+                            <div className="col-span-2">
+                              <span
+                                className={[
+                                  "inline-block rounded-md px-2 py-0.5 text-[10px] font-semibold uppercase",
+                                  s.status === "COMPLETED"
+                                    ? "bg-accent/15 text-accent"
+                                    : s.status === "RUNNING"
+                                      ? "bg-accent/25 text-cream"
+                                      : s.status === "FAILED"
+                                        ? "bg-warn/15 text-warn"
+                                        : "bg-muted/15 text-muted",
+                                ].join(" ")}
+                              >
+                                {s.status}
+                              </span>
+                            </div>
+                            <div className="col-span-2 font-mono text-[11px] tabular-nums text-cream sm:text-muted">
+                              <span className="mr-2 text-[10px] font-semibold uppercase tracking-wider text-muted sm:hidden">
+                                Subdomains (URLs)
+                              </span>
+                              {metrics.subdomainsWithUrls}
+                            </div>
+                            <div className="col-span-2 font-mono text-[11px] tabular-nums text-cream sm:text-muted">
+                              <span className="mr-2 text-[10px] font-semibold uppercase tracking-wider text-muted sm:hidden">
+                                URLs
+                              </span>
+                              {metrics.urls}
+                            </div>
+                            <div className="col-span-2 font-mono text-[11px] tabular-nums text-cream sm:text-muted">
+                              <span className="mr-2 text-[10px] font-semibold uppercase tracking-wider text-muted sm:hidden">
+                                Findings
+                              </span>
+                              {metrics.findings}
+                            </div>
+                            <div className="col-span-2 font-mono text-[11px] text-muted">
+                              <span className="mr-2 text-[10px] font-semibold uppercase tracking-wider text-muted sm:hidden">
+                                Phase
+                              </span>
+                              {s.phase ?? "—"}
+                              {s.status === ScanJobStatus.RUNNING && (
+                                <div className="mt-0.5 text-[10px] tabular-nums text-muted/80">
+                                  {(s.progressCurrent ?? 0).toLocaleString()}/
+                                  {(s.progressTotal ?? 0).toLocaleString()} URLs
+                                </div>
+                              )}
+                            </div>
+                            <div className="col-span-2 font-mono text-[11px] text-muted">
+                              <span className="mr-2 text-[10px] font-semibold uppercase tracking-wider text-muted sm:hidden">
+                                Created
+                              </span>
+                              {createdLabel}
+                            </div>
+                          </Link>
+                        );
+                      })
+                    )}
+                  </div>
+                </div>
               </div>
             </div>
           )}
