@@ -176,7 +176,7 @@ export function ScanHistoryPanel({ scans }: { scans: ScanHistoryRow[] }) {
                   </div>
                   <div className="font-mono text-[11px] tabular-nums text-muted">
                     <div className="mb-1 text-[10px] font-semibold uppercase tracking-wider text-muted">
-                      Progress
+                      URLs
                     </div>
                     {scan.progressLabel}
                   </div>
@@ -221,7 +221,7 @@ export function ScanHistoryPanel({ scans }: { scans: ScanHistoryRow[] }) {
             <span className={`${STATUS_BOX_CLASS} text-muted`}>Status</span>
           </div>
           <div className="min-w-0 truncate">Phase</div>
-          <div className="tabular-nums">Progress</div>
+          <div className="tabular-nums">URLs</div>
           <div className="tabular-nums">Findings</div>
           <div className="tabular-nums">Finished</div>
           <div className="tabular-nums">Created</div>

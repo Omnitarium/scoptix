@@ -9,7 +9,18 @@ import { useState } from "react";
  * 1. Cancel all active scans for this target
  * 2. Delete the target and all cascading data (subdomains, URLs, findings)
  */
-export function DeleteTargetButton({ targetId, targetName }: { targetId: string; targetName: string }) {
+const DEFAULT_CLASS =
+  "rounded-xl border border-warn/40 bg-warn/10 px-4 py-2.5 text-[12px] font-semibold text-warn transition-colors hover:bg-warn/20 disabled:opacity-60";
+
+export function DeleteTargetButton({
+  targetId,
+  targetName,
+  className,
+}: {
+  targetId: string;
+  targetName: string;
+  className?: string;
+}) {
   const router = useRouter();
   const [busy, setBusy] = useState(false);
 
@@ -46,7 +57,7 @@ export function DeleteTargetButton({ targetId, targetName }: { targetId: string;
     <button
       onClick={handleDelete}
       disabled={busy}
-      className="rounded-xl border border-warn/40 bg-warn/10 px-4 py-2.5 text-[12px] font-semibold text-warn transition-colors hover:bg-warn/20 disabled:opacity-60"
+      className={className ?? DEFAULT_CLASS}
     >
       {busy ? "Deleting…" : "Delete Target"}
     </button>

@@ -27,6 +27,7 @@ import {
 } from "@/lib/extension-category";
 import { deepFetchText } from "@/lib/deep-fetch";
 import { extractHostIfUnderTarget } from "@/lib/extract-hosts";
+import { syncScanObservedCounts } from "@/lib/scan-observed-counts";
 import { acquireVtKey, recordBackoff } from "@/lib/rotator";
 import { runSensitiveRegexScan } from "@/lib/regex-analysis";
 
@@ -242,6 +243,7 @@ async function persistObservedUrls(
       urlSha256: row.urlSha256,
       pathnameExtension: row.pathnameExtension,
       extensionCategoryId: discovered?.extensionCategoryId ?? row.extensionCategoryId,
+      engines: row.engines,
     };
   });
 
@@ -804,17 +806,17 @@ export async function runScanJob(prisma: PrismaClient, redis: Redis, scanJobId: 
 
   await checkCancelled(prisma, scanJobId);
 
-  const finalUrlCount = await prisma.discoveredUrl.count({ where: { targetDomainId: target.id } });
-
   const finalCheck = await prisma.scanJob.findUnique({ where: { id: scanJobId }, select: { status: true } });
   if (finalCheck?.status !== ScanJobStatus.CANCELLED) {
+    const observed = await syncScanObservedCounts(prisma, scanJobId);
+    const progressTotal = Math.max(1, observed.urls);
     await prisma.scanJob.update({
       where: { id: scanJobId },
       data: {
         status: ScanJobStatus.COMPLETED,
         completedAt: new Date(),
-        progressCurrent: finalUrlCount,
-        progressTotal: Math.max(1, finalUrlCount),
+        progressCurrent: observed.urls,
+        progressTotal,
       },
     });
   }

@@ -1,6 +1,6 @@
 # SCOPTIX
 
-SCOPTIX is a passive reconnaissance and attack surface exploration tool that helps analysts identify exposed content, potentially sensitive information, and application endpoints that may warrant further investigation. It aggregates subdomains, URLs, and archived web assets from external data sources to support security analysis and exposure discovery.
+SCOPTIX is a passive reconnaissance and attack surface exploration tool that helps analysts identify exposed content, potentially sensitive information, and application endpoints that may warrant further investigation. It aggregates subdomains, URLs, IP addresses, and archived web assets from external data sources to support security analysis and exposure discovery.
 
 Data is currently sourced from **VirusTotal** and the Internet Archive's **Wayback Machine**.
 
@@ -8,11 +8,11 @@ Data is currently sourced from **VirusTotal** and the Internet Archive's **Wayba
 
 ## Key Features
 
-* **Asset Discovery:** Discover subdomains, URLs, and archived web assets from multiple external data sources.
+* **Asset Discovery:** Discover subdomains, URLs, IP addresses, and archived web assets from multiple external data sources. IP resolutions come from VirusTotal passive DNS (hostname ↔ IP history for the apex and discovered subdomains). Each scan keeps an observed IP list for that run; the target view aggregates the same addresses across all scans with hostname timelines and historical resolution detail.
 * **Exposure Discovery:** Identify potentially exposed credentials, API keys, tokens, cloud secrets, and configuration artifacts across discovered assets using customizable detection rules.
 * **Content Analysis:** Automatically discover potentially sensitive files, including documents, archives, binaries, backups, and other analyst-defined categories.
 * **Endpoint Discovery:** Explore parameters, application endpoints, authentication-related resources, and other security-relevant application assets.
-* **Scan Comparison:** Track changes across scans and quickly identify newly discovered subdomains, URLs, archived assets, and exposure findings.
+* **Scan Comparison:** Track changes across scans and quickly identify newly discovered subdomains, URLs, IP addresses, archived assets, and exposure findings.
 
 -----
 
@@ -34,8 +34,8 @@ Real-world examples discussed in these presentations include:
 
 ## Typical Workflow
 
-1. Discover subdomains and historical URLs from external data sources.
-2. Review identified assets and archived content.
+1. Discover subdomains, URLs, and IP resolution history from external data sources.
+2. Review identified assets (including per-IP hostname history on the target) and archived content.
 3. Analyze URLs and content for exposed credentials, secrets, and sensitive files.
 4. Investigate application endpoints and other security-relevant findings.
 5. Compare results across scans to identify newly discovered exposures.
@@ -54,6 +54,8 @@ Real-world examples discussed in these presentations include:
 - Node.js (LTS recommended) and npm
 - Git (to clone the repository)
 - **Either** Docker (recommended for Postgres + Redis) **or** your own PostgreSQL and Redis instances
+
+**Tested platform:** Ubuntu 26.04 (Docker and local dev workflows above). Other Linux distributions and macOS may work but are not routinely verified.
 
 Optional:
 
@@ -135,7 +137,9 @@ bash docker-start.sh
 
 Open [http://localhost:3000](http://localhost:3000).
 
-Check status: `./docker-status.sh` · Logs: `npm run docker:logs` · Stop: `bash docker-stop.sh` or `npm run docker:down`
+- Check status: `./docker-status.sh`
+- Logs: `npm run docker:logs`
+- Stop: `bash docker-stop.sh` or `npm run docker:down`
 
 #### Option C — Manual Postgres / Redis
 
@@ -153,6 +157,8 @@ npm run dev:all
 3. Go to **Scans**, enter a domain, optionally enable deep scan, and start.
 
 ## Docker & permissions
+
+Development and Docker helper scripts in this repo were validated on **Ubuntu 26.04**.
 
 - **Postgres data** is stored in a named Docker volume (`scoptix_pg`), not a host bind mount—so you avoid UID/GID permission issues on `./data` folders.
 - **Linux:** add your user to the `docker` group so you do not need `sudo` for Compose: `sudo usermod -aG docker $USER`, then log out and back in.
@@ -176,16 +182,21 @@ npm run dev:all
 | `npm run db:seed` | Seed extension rules and default settings |
 | `npm run setup` | `db:migrate` + `db:seed` |
 
+### Database migrations
+
+The schema ships as a single Prisma migration: `prisma/migrations/0001_init`. Fresh installs (`npm run setup`, `bash docker-start.sh`) apply that file automatically.
+
 ## Scan pipeline (overview)
 
 When both engines are enabled for a root-domain scan, the worker roughly follows:
 
-1. **VirusTotal — apex:** domain report and URL harvest.
-2. **VirusTotal — subdomains:** BFS expansion up to `maxSubdomains`.
-3. **Wayback — apex:** CDX URL list for the root domain.
-4. **Wayback — subdomains:** CDX per discovered subdomain (rate-limited).
-5. **Consolidate:** dedupe URLs, assign extension categories, update target caches.
-6. **Analysis:** regex scan on URL strings; optional deep fetch + body scan for selected categories.
+1. **VirusTotal — apex:** domain report, URL harvest, and passive DNS resolutions for the root domain.
+2. **VirusTotal — subdomains:** BFS expansion up to `maxSubdomains` (URLs and passive DNS per hostname).
+3. **VirusTotal — IP resolutions:** persist observed IPs for the scan and merge hostname↔IP sightings into the target’s global IP directory.
+4. **Wayback — apex:** CDX URL list for the root domain.
+5. **Wayback — subdomains:** CDX per discovered subdomain (rate-limited).
+6. **Consolidate:** dedupe URLs, assign extension categories, update target caches.
+7. **Analysis:** regex scan on URL strings; optional deep fetch + body scan for selected categories.
 
 Subdomain-only scans skip full apex expansion but still run enabled engines against the input hostname.
 

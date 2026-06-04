@@ -6,6 +6,7 @@ import {
   IpDirectoryTableRow,
   type IpDirectoryRowData,
 } from "@/components/ips/ip-directory-row";
+import { ScanPanelHeading } from "@/components/scans/scan-panel-heading";
 import { TablePagination } from "@/components/table-pagination";
 import { ipSortSearchParams, type IpTableSort } from "@/lib/ip-table-sort";
 
@@ -41,14 +42,14 @@ export function ScanIpsTab({
     <div className="space-y-4">
       <div className="glass-panel overflow-hidden rounded-2xl">
         <div className="border-b border-line bg-[var(--table-header-bg)] px-5 py-4">
-          <div className="text-[13px] font-semibold text-cream">
-            IP Resolutions observed in this scan
-          </div>
-          <div className="mt-1 text-[12px] text-muted">
-            {isCompleted
-              ? "Historical IPs scoped to this scan only."
-              : "Current observed IPs for this in-progress or partial scan."}
-          </div>
+          <ScanPanelHeading
+            title="IP Resolutions observed in this scan"
+            description={
+              isCompleted
+                ? "Historical IPs scoped to this scan only."
+                : "Current observed IPs for this in-progress or partial scan."
+            }
+          />
         </div>
 
         <IpDirectoryTableHeader sort={sort} basePath={basePath} fixedParams={tableFixedParams} />

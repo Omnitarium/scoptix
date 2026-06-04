@@ -11,13 +11,11 @@ import {
   IconLink,
   IconServer,
 } from "@/components/ui-icons";
+import { scanPanelEyebrowClass } from "@/components/scans/scan-panel-heading";
 import type { ScanSummaryData, SummaryChangeLine } from "@/lib/scan-summary";
 
 const summaryFooterLinkClass =
   "inline-flex items-center text-[12px] font-medium text-accent hover:text-accent-dim";
-
-const cardEyebrowClass =
-  "text-[10px] font-semibold uppercase tracking-[0.2em] text-accent";
 
 /** Adapts column count via `.scx-summary-layout-grid` container queries on main shell. */
 const summaryLayoutGridClass = "scx-summary-layout-grid";
@@ -58,20 +56,25 @@ export function ScanSummaryTab({
   data,
   basePath,
   compareHref,
+  scope = "scan",
 }: {
   data: ScanSummaryData;
   basePath: string;
   compareHref: string;
+  scope?: "scan" | "target";
 }) {
+  const isTarget = scope === "target";
   return (
     <div className="space-y-4">
       <div className={summaryLayoutGridClass}>
         <section className="scx-summary-card flex h-full flex-col">
-          <h2 className={`mb-2.5 ${cardEyebrowClass}`}>Findings by Type (Top 10)</h2>
+          <h2 className={`mb-2.5 ${scanPanelEyebrowClass}`}>Findings by Type (Top 10)</h2>
           <SummaryRankTableHeader labelCol="Type" countLabel="Count" />
           <div className="flex-1 space-y-0.5">
             {data.findingsTop10.length === 0 ? (
-              <p className="py-6 text-center text-[12px] text-muted">No findings in this scan.</p>
+              <p className="py-6 text-center text-[12px] text-muted">
+                {isTarget ? "No findings for this target yet." : "No findings in this scan."}
+              </p>
             ) : (
               data.findingsTop10.map((row) => <SummaryRankRow key={row.label} row={row} />)
             )}
@@ -85,12 +88,14 @@ export function ScanSummaryTab({
         </section>
 
         <section className="scx-summary-card flex h-full flex-col">
-          <h2 className={`mb-2.5 ${cardEyebrowClass}`}>URL Categories (Top 10)</h2>
+          <h2 className={`mb-2.5 ${scanPanelEyebrowClass}`}>URL Categories (Top 10)</h2>
           <SummaryRankTableHeader labelCol="Category" countLabel="URLs" />
           <div className="flex-1 space-y-0.5">
             {data.urlCategoriesTop10.length === 0 ? (
               <p className="py-6 text-center text-[12px] text-muted">
-                No categorized URLs in this snapshot.
+                {isTarget
+                  ? "No categorized URLs for this target yet."
+                  : "No categorized URLs in this snapshot."}
               </p>
             ) : (
               data.urlCategoriesTop10.map((row) => (
@@ -107,7 +112,7 @@ export function ScanSummaryTab({
         </section>
 
         <section className="scx-summary-card flex h-full flex-col">
-          <h2 className={`mb-2.5 ${cardEyebrowClass}`}>Changes Since Previous Scan</h2>
+          <h2 className={`mb-2.5 ${scanPanelEyebrowClass}`}>Changes Since Previous Scan</h2>
           {!data.changes.baselineScanId ? (
             <p className="text-[12px] leading-relaxed text-muted">
               No earlier completed scan for this target yet. Run another scan later to see
@@ -149,10 +154,12 @@ export function ScanSummaryTab({
         </section>
 
         <section className="scx-summary-card flex h-full min-w-0 flex-col overflow-hidden">
-          <h2 className={`mb-2.5 ${cardEyebrowClass}`}>Last 5 Findings</h2>
+          <h2 className={`mb-2.5 ${scanPanelEyebrowClass}`}>Last 5 Findings</h2>
           <div className="min-w-0 flex-1 space-y-1.5 overflow-hidden pb-3">
             {data.latestFindings.length === 0 ? (
-              <p className="py-4 text-center text-[12px] text-muted">No findings in this scan yet.</p>
+              <p className="py-4 text-center text-[12px] text-muted">
+                {isTarget ? "No findings for this target yet." : "No findings in this scan yet."}
+              </p>
             ) : (
               data.latestFindings.map((item) => (
                 <div
@@ -194,9 +201,13 @@ export function ScanSummaryTab({
         </section>
 
         <section className="scx-summary-card flex min-h-[220px] flex-col">
-          <h2 className={`mb-2.5 ${cardEyebrowClass}`}>Sources</h2>
+          <h2 className={`mb-2.5 ${scanPanelEyebrowClass}`}>Sources</h2>
           {data.sources.length === 0 ? (
-            <p className="text-[12px] text-muted">Source breakdown unavailable for this snapshot.</p>
+            <p className="text-[12px] text-muted">
+              {isTarget
+                ? "Source breakdown unavailable for this target."
+                : "Source breakdown unavailable for this snapshot."}
+            </p>
           ) : (
             <>
               <div className="flex flex-1 flex-col items-center gap-4 sm:flex-row sm:items-center sm:gap-5">

@@ -6,6 +6,7 @@ import {
   IpDirectoryTableRow,
   type IpDirectoryRowData,
 } from "@/components/ips/ip-directory-row";
+import { ScanPanelHeading } from "@/components/scans/scan-panel-heading";
 import { TablePagination } from "@/components/table-pagination";
 import { ipSortSearchParams, type IpTableSort } from "@/lib/ip-table-sort";
 
@@ -35,12 +36,10 @@ export function TargetIpsTab({
     <div className="space-y-4">
       <div className="glass-panel overflow-hidden rounded-2xl">
         <div className="border-b border-line bg-[var(--table-header-bg)] px-5 py-4">
-          <div className="text-[13px] font-semibold text-cream">
-            Global IP Directory
-          </div>
-          <div className="mt-1 text-[12px] text-muted">
-            All IP addresses ever resolved for this target across all scans.
-          </div>
+          <ScanPanelHeading
+            title="Global IP directory"
+            description="All IP addresses ever resolved for this target across all scans."
+          />
         </div>
 
         <IpDirectoryTableHeader sort={sort} basePath={basePath} fixedParams={tableFixedParams} />

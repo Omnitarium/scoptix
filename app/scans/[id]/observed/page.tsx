@@ -9,11 +9,11 @@ import {
   IconFolder,
   IconGlobe,
   IconLink,
-  IconList,
   IconServer,
 } from "@/components/ui-icons";
 import { ScanComparePanel } from "@/components/scan-compare-panel";
 import { ScanDetailHeader } from "@/components/scans/scan-detail-header";
+import { ScanPanelHeading } from "@/components/scans/scan-panel-heading";
 import { ScanDetailTabs } from "@/components/scans/scan-detail-tabs";
 import { ScanMetricCards } from "@/components/scans/scan-metric-cards";
 import { ScanSummaryTab } from "@/components/scans/scan-summary-tab";
@@ -47,6 +47,10 @@ import {
   type IpCompareItem,
 } from "@/lib/scan-compare-diff";
 import {
+  formatEnginesLabel,
+  parseScanEnginesEnabled,
+} from "@/lib/scan-engines";
+import {
   formatScanDateTime,
   formatScanDuration,
   shortScanId,
@@ -55,6 +59,7 @@ import {
   getObservedAvailability,
   getObservedScanSummary,
 } from "@/lib/scan-observed";
+import { syncScanObservedCounts } from "@/lib/scan-observed-counts";
 import { parseIpTableSort, scanObservedIpOrderBy } from "@/lib/ip-table-sort";
 import { prisma } from "@/lib/prisma";
 import {
@@ -93,13 +98,6 @@ function dualCountLabel(numerator: number | null, denominator: number | null) {
   return `${numerator.toLocaleString()} / ${denominator.toLocaleString()}`;
 }
 
-function formatEngineLabel(engine: string) {
-  if (engine === "VIRUSTOTAL") return "VirusTotal";
-  if (engine === "WAYBACK_MACHINE") return "Wayback";
-  if (engine === "URLSCAN") return "URLScan";
-  return engine;
-}
-
 type ObservedSubdomainRow = {
   id: string;
   hostnameNormalized: string;
@@ -131,10 +129,11 @@ export default async function ScanObservedPage({
   const compareSubTabRaw = sp(rawSp.cmpTab) || "findings";
   const subAll = sp(rawSp.subAll) === "1";
   const tab =
-    tabRaw === "findings" ||
+    tabRaw === "summary" ||
     tabRaw === "subdomains" ||
     tabRaw === "urls" ||
     tabRaw === "ips" ||
+    tabRaw === "findings" ||
     tabRaw === "compare"
       ? tabRaw
       : "summary";
@@ -159,6 +158,8 @@ export default async function ScanObservedPage({
 
   const scan = await getObservedScanSummary(id);
   if (!scan) notFound();
+
+  const scanEnginesEnabled = parseScanEnginesEnabled(scan.config);
 
   const snapshotScan = scan as typeof scan & {
     observedVersion?: number | null;
@@ -191,26 +192,36 @@ export default async function ScanObservedPage({
   const availability = getObservedAvailability({
     observedVersion: snapshotScan.observedVersion,
   });
-  const [observedFindingCount, observedSubdomainCount, observedUrlCount, observedIpCount, urlCategoryCounts] =
-    await Promise.all([
-      snapshotScan.observedFindingCount ??
-        prisma.analysisFinding.count({ where: { scanJobId: id } }),
-      availability.subdomains === "ready"
-        ? snapshotScan.observedSubdomainCount ??
-          observedSubdomainModel.count({ where: { scanJobId: id } })
-        : Promise.resolve(null),
-      availability.urls === "ready"
-        ? snapshotScan.observedUrlCount ??
-          observedUrlModel.count({ where: { scanJobId: id } })
-        : Promise.resolve(null),
-      availability.ips === "ready"
-        ? snapshotScan.observedIpCount ??
-          prisma.scanObservedIpResolution.count({ where: { scanJobId: id } })
-        : Promise.resolve(null),
-      availability.urls === "ready"
-        ? countObservedUrlsByCategory(prisma, id)
-        : Promise.resolve(null),
-    ]);
+
+  const observedCounts =
+    scan.status === ScanJobStatus.COMPLETED
+      ? await syncScanObservedCounts(prisma, id, { fixProgress: true })
+      : await (async () => {
+          const [findings, subdomains, urls, ips] = await Promise.all([
+            prisma.analysisFinding.count({ where: { scanJobId: id } }),
+            availability.subdomains === "ready"
+              ? observedSubdomainModel.count({ where: { scanJobId: id } })
+              : Promise.resolve(0),
+            availability.urls === "ready"
+              ? observedUrlModel.count({ where: { scanJobId: id } })
+              : Promise.resolve(0),
+            availability.ips === "ready"
+              ? prisma.scanObservedIpResolution.count({ where: { scanJobId: id } })
+              : Promise.resolve(0),
+          ]);
+          return { findings, subdomains, urls, ips };
+        })();
+
+  const observedFindingCount = observedCounts.findings;
+  const observedSubdomainCount =
+    availability.subdomains === "ready" ? observedCounts.subdomains : null;
+  const observedUrlCount = availability.urls === "ready" ? observedCounts.urls : null;
+  const observedIpCount = availability.ips === "ready" ? observedCounts.ips : null;
+
+  const urlCategoryCounts =
+    availability.urls === "ready"
+      ? await countObservedUrlsByCategory(prisma, id)
+      : null;
 
   const categorizedUrlCount = urlCategoryCounts?.categorizedCount ?? 0;
   const summaryData =
@@ -564,13 +575,6 @@ export default async function ScanObservedPage({
       count: null,
     },
     {
-      key: "findings",
-      label: "Findings",
-      icon: IconAlertTriangle,
-      href: tabHref("findings"),
-      count: countLabel(observedFindingCount),
-    },
-    {
       key: "subdomains",
       label: "Subdomains",
       icon: IconGlobe,
@@ -590,6 +594,13 @@ export default async function ScanObservedPage({
       icon: IconServer,
       href: tabHref("ips"),
       count: countLabel(observedIpCount),
+    },
+    {
+      key: "findings",
+      label: "Findings",
+      icon: IconAlertTriangle,
+      href: tabHref("findings"),
+      count: countLabel(observedFindingCount),
     },
     {
       key: "compare",
@@ -613,11 +624,11 @@ export default async function ScanObservedPage({
       label: "Subdomains (with URLs)",
     },
     {
-      icon: IconList,
+      icon: IconServer,
       iconBg: "scx-metric-icon-badge--success",
       iconColor: "",
-      value: scan.targetDomain.cachedSubdomainCount.toLocaleString(),
-      label: "Subdomains (total)",
+      value: countLabel(observedIpCount),
+      label: "IP Addresses",
     },
     {
       icon: IconLink,
@@ -694,7 +705,7 @@ export default async function ScanObservedPage({
         scanIdShort={shortScanId(id)}
         duration={formatScanDuration(scan.startedAt, scan.completedAt)}
         compareHref={tabHref("compare")}
-        targetHref={`/targets/${scan.targetDomainId}?tab=ips`}
+        targetHref={`/targets/${scan.targetDomainId}?tab=summary`}
         scanId={id}
         exportAvailability={availability}
       />
@@ -831,14 +842,14 @@ export default async function ScanObservedPage({
 
               <div className="glass-panel overflow-hidden rounded-2xl">
                 <div className="border-b border-line bg-[var(--table-header-bg)] px-5 py-4">
-                  <div className="text-[13px] font-semibold text-cream">
-                    Findings observed in this scan
-                  </div>
-                  <div className="mt-1 text-[12px] text-muted">
-                    {isCompleted
-                      ? "Historical findings scoped to this scan only."
-                      : "Current observed findings for this in-progress or partial scan."}
-                  </div>
+                  <ScanPanelHeading
+                    title="Findings observed in this scan"
+                    description={
+                      isCompleted
+                        ? "Historical findings scoped to this scan only."
+                        : "Current observed findings for this in-progress or partial scan."
+                    }
+                  />
                 </div>
 
                 <div className="hidden border-b border-line bg-[var(--table-header-bg)] px-5 py-2.5 text-[10px] font-semibold uppercase tracking-wider text-muted lg:grid lg:grid-cols-12 lg:gap-3">
@@ -871,9 +882,11 @@ export default async function ScanObservedPage({
                           </div>
                         </div>
                         <div className="col-span-1 text-[10px] text-muted">
-                          {finding.discoveredUrl.engines
-                            .map((engine) => formatEngineLabel(engine))
-                            .join(", ")}
+                          {formatEnginesLabel(
+                            undefined,
+                            finding.discoveredUrl.engines,
+                            scanEnginesEnabled,
+                          ) || "—"}
                         </div>
                         <div className="col-span-6 min-w-0">
                           <div
@@ -930,14 +943,14 @@ export default async function ScanObservedPage({
               <div className="border-b border-line bg-[var(--table-header-bg)] px-5 py-4">
                 <div className="flex flex-wrap items-start justify-between gap-3">
                   <div>
-                    <div className="text-[13px] font-semibold text-cream">
-                      {subAll ? "All target subdomains" : "Subdomains with URLs in this scan"}
-                    </div>
-                    <div className="mt-1 text-[12px] text-muted">
-                      {subAll
-                        ? "Complete subdomain inventory for this target. Badges indicate whether each subdomain has an observed URL in this scan."
-                        : "Only subdomains that appear in the observed URL snapshot for this scan."}
-                    </div>
+                    <ScanPanelHeading
+                      title={subAll ? "All target subdomains" : "Subdomains with URLs in this scan"}
+                      description={
+                        subAll
+                          ? "Complete subdomain inventory for this target. Badges indicate whether each subdomain has an observed URL in this scan."
+                          : "Only subdomains that appear in the observed URL snapshot for this scan."
+                      }
+                    />
                   </div>
                   <div className="flex flex-wrap items-center justify-end gap-2">
                     <Link
@@ -1059,14 +1072,10 @@ export default async function ScanObservedPage({
               ) : (
                 <>
                   <div className="border-b border-line px-5 py-4 space-y-3">
-                    <div>
-                      <div className="text-[13px] font-semibold text-cream">
-                        URLs observed in this scan
-                      </div>
-                      <div className="mt-1 text-[12px] text-muted">
-                        URL snapshot scoped to this scan, independent from current target totals.
-                      </div>
-                    </div>
+                    <ScanPanelHeading
+                      title="URLs observed in this scan"
+                      description="URL snapshot scoped to this scan, independent from current target totals."
+                    />
                     <UrlFiltersToolbar
                       hrefContext={{ scope: "observed", scanId: id }}
                       preserve={urlTabPreserve}

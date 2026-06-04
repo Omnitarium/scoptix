@@ -4,6 +4,7 @@ import { NewScanDialog } from "@/components/new-scan-dialog";
 import { PageHeader } from "@/components/page-header";
 import { ScanHistoryPanel } from "@/components/scans/scan-history-panel";
 import { prisma } from "@/lib/prisma";
+import { countScanObservedFromDb } from "@/lib/scan-observed-counts";
 import { TopBar } from "@/components/top-bar";
 
 export const dynamic = "force-dynamic";
@@ -22,17 +23,18 @@ function formatDateTime(value: Date | null) {
   return value.toISOString().slice(0, 16).replace("T", " ");
 }
 
+/** URLs recorded in this scan's snapshot (scan_observed_url), not target-global totals. */
+function formatSnapshotUrlProgress(urlCount: number) {
+  if (urlCount <= 0) return "0/0";
+  return `${urlCount.toLocaleString()}/${urlCount.toLocaleString()}`;
+}
+
 export default async function ScansPage() {
   const scans = await prisma.scanJob.findMany({
     orderBy: { createdAt: "desc" },
     take: 50,
     include: {
       targetDomain: true,
-      _count: {
-        select: {
-          analysisFindings: true,
-        },
-      },
     },
   });
   const activeScans = scans.filter(
@@ -46,9 +48,20 @@ export default async function ScansPage() {
       scan.status !== ScanJobStatus.QUEUED,
   );
 
+  const snapshotByScanId = new Map(
+    (
+      await Promise.all(
+        historyScans.map(async (scan) => {
+          const snapshot = await countScanObservedFromDb(prisma, scan.id);
+          return { id: scan.id, snapshot };
+        }),
+      )
+    ).map((row) => [row.id, row.snapshot]),
+  );
+
   const historyRows = historyScans.map((scan) => {
     const isCompleted = scan.status === ScanJobStatus.COMPLETED;
-    const findingsCount = scan.observedFindingCount ?? scan._count.analysisFindings;
+    const snapshot = snapshotByScanId.get(scan.id)!;
 
     return {
       id: scan.id,
@@ -56,8 +69,8 @@ export default async function ScansPage() {
       status: scan.status,
       statusClassName: STATUS_STYLE[scan.status] ?? "bg-muted/10 text-muted",
       phase: scan.phase ?? "—",
-      progressLabel: `${(scan.progressCurrent ?? 0).toLocaleString()}/${(scan.progressTotal ?? 0).toLocaleString()}`,
-      findingsCount: findingsCount.toLocaleString(),
+      progressLabel: formatSnapshotUrlProgress(snapshot.urls),
+      findingsCount: snapshot.findings.toLocaleString(),
       finishedLabel: formatDateTime(scan.completedAt),
       createdLabel: formatDateTime(scan.createdAt),
       href: isCompleted ? `/scans/${scan.id}/observed` : `/scans/${scan.id}`,

@@ -1,3 +1,4 @@
+import { formatEngineLabel, parseScanEnginesEnabled, enginesObservedInScan } from "@/lib/scan-engines";
 import { prisma } from "@/lib/prisma";
 import {
   categorySlugForPathnameExtension,
@@ -18,13 +19,6 @@ function formatIso(value: Date | null | undefined) {
   return value ? value.toISOString() : "";
 }
 
-function formatEngineLabel(engine: string) {
-  if (engine === "VIRUSTOTAL") return "VirusTotal";
-  if (engine === "WAYBACK_MACHINE") return "Wayback";
-  if (engine === "URLSCAN") return "URLScan";
-  return engine;
-}
-
 function sanitizeFilenamePart(value: string) {
   return value.replace(/[^a-zA-Z0-9._-]+/g, "-").replace(/^-+|-+$/g, "") || "scan";
 }
@@ -40,7 +34,7 @@ export function buildScanExportFilename(
   return `${domainPart}-${scanPart}-${type}.csv`;
 }
 
-async function fetchAllFindings(scanId: string) {
+async function fetchAllFindings(scanId: string, enabledEngines: ReturnType<typeof parseScanEnginesEnabled>) {
   const rows: string[][] = [];
   let skip = 0;
 
@@ -66,7 +60,9 @@ async function fetchAllFindings(scanId: string) {
       rows.push([
         finding.findingType,
         finding.source,
-        finding.discoveredUrl.engines.map(formatEngineLabel).join("; "),
+        enginesObservedInScan(undefined, finding.discoveredUrl.engines, enabledEngines)
+          .map((e) => formatEngineLabel(e))
+          .join("; "),
         finding.discoveredUrl.urlText,
         finding.snippet ?? "",
         formatIso(finding.createdAt),
@@ -228,10 +224,16 @@ export async function buildScanExportPayload(
   type: ScanExportType,
   availability: ObservedAvailability,
 ) {
+  const scanJob = await prisma.scanJob.findUnique({
+    where: { id: scanId },
+    select: { config: true },
+  });
+  const enabledEngines = parseScanEnginesEnabled(scanJob?.config);
+
   if (type === "findings") {
     return {
       contentType: "text/csv; charset=utf-8",
-      body: await fetchAllFindings(scanId),
+      body: await fetchAllFindings(scanId, enabledEngines),
     };
   }
 
@@ -267,7 +269,7 @@ export async function buildScanExportPayload(
 
   const { buildStoreZip } = await import("@/lib/zip-store");
   const entries: { name: string; content: string }[] = [
-    { name: "findings.csv", content: await fetchAllFindings(scanId) },
+    { name: "findings.csv", content: await fetchAllFindings(scanId, enabledEngines) },
   ];
 
   if (availability.subdomains === "ready") {

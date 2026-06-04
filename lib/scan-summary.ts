@@ -1,4 +1,9 @@
-import { ScanJobStatus } from "@prisma/client";
+import { EngineProvider, ScanJobStatus } from "@prisma/client";
+import {
+  enginesObservedInScan,
+  formatEngineLabel,
+  parseScanEnginesEnabled,
+} from "@/lib/scan-engines";
 import {
   loadFindingsCompareDiff,
   loadIpResolutionsCompareDiff,
@@ -8,9 +13,11 @@ import {
 import type { ObservedAvailability } from "@/lib/scan-observed";
 import { prisma } from "@/lib/prisma";
 import {
+  countDiscoveredUrlsByCategory,
   countObservedUrlsByCategory,
   type UrlCategoryCounts,
 } from "@/lib/extension-category";
+import { getObservedAvailability } from "@/lib/scan-observed";
 import {
   resolveCategoryRankVisual,
   resolveFindingRankVisual,
@@ -174,13 +181,6 @@ function formatFindingFoundAt(value: Date) {
   return value.toISOString().slice(0, 16).replace("T", " ");
 }
 
-function formatEngineLabel(engine: string) {
-  if (engine === "VIRUSTOTAL") return "VirusTotal";
-  if (engine === "WAYBACK_MACHINE") return "Wayback Machine";
-  if (engine === "URLSCAN") return "URLScan";
-  return engine;
-}
-
 /** Donut segment colors aligned with sampleimg.png (green Wayback, purple VT). */
 const SOURCE_COLORS = ["#22c55e", "#9333ea", "#3b82f6", "#f59e0b"];
 
@@ -275,25 +275,310 @@ async function loadDiscoveryTimeline(
   });
 }
 
+async function buildChangesSincePreviousScan(
+  previousScan: { id: string; completedAt: Date | null; createdAt: Date },
+  currentScanId: string,
+  availability: ObservedAvailability,
+): Promise<ScanSummaryData["changes"]> {
+  const changes: ScanSummaryData["changes"] = {
+    baselineScanId: previousScan.id,
+    baselineLabel: (previousScan.completedAt ?? previousScan.createdAt)
+      .toISOString()
+      .slice(0, 10),
+    lines: [],
+  };
+
+  const baselineAvailability = {
+    findings: "ready" as const,
+    subdomains: availability.subdomains,
+    urls: availability.urls,
+    ips: availability.ips,
+  };
+
+  const [findingsDiff, subdomainsDiff, urlsDiff, ipsDiff] = await Promise.all([
+    loadFindingsCompareDiff(previousScan.id, currentScanId, 500),
+    loadSubdomainsCompareDiff(
+      previousScan.id,
+      currentScanId,
+      500,
+      availability,
+      baselineAvailability,
+    ),
+    loadUrlsCompareDiff(previousScan.id, currentScanId, 500, availability, baselineAvailability),
+    loadIpResolutionsCompareDiff(
+      previousScan.id,
+      currentScanId,
+      500,
+      availability,
+      baselineAvailability,
+    ),
+  ]);
+
+  const pushLine = (line: SummaryChangeLine) => changes.lines.push(line);
+
+  if (subdomainsDiff.comparable) {
+    pushLine({
+      label: "New Subdomains",
+      value: `+${subdomainsDiff.summary.added.toLocaleString()}`,
+      tone: "positive",
+      icon: "globe",
+    });
+  }
+
+  if (urlsDiff.comparable) {
+    pushLine({
+      label: "New URLs",
+      value: `+${urlsDiff.summary.added.toLocaleString()}`,
+      tone: "positive",
+      icon: "link",
+    });
+  }
+
+  const dividerBeforeRemoved = changes.lines.length > 0;
+
+  if (subdomainsDiff.comparable) {
+    pushLine({
+      label: "Removed Subdomains",
+      value:
+        subdomainsDiff.summary.removed > 0
+          ? `-${subdomainsDiff.summary.removed.toLocaleString()}`
+          : "0",
+      tone: "negative",
+      icon: "globe",
+      dividerBefore: dividerBeforeRemoved,
+    });
+  }
+
+  if (urlsDiff.comparable) {
+    pushLine({
+      label: "Removed URLs",
+      value:
+        urlsDiff.summary.removed > 0
+          ? `-${urlsDiff.summary.removed.toLocaleString()}`
+          : "0",
+      tone: "negative",
+      icon: "link-removed",
+      dividerBefore: dividerBeforeRemoved && !subdomainsDiff.comparable,
+    });
+  }
+
+  if (ipsDiff.comparable) {
+    const added = ipsDiff.summary.added;
+    const removed = ipsDiff.summary.removed;
+    if (added > 0) {
+      pushLine({
+        label: "New IPs",
+        value: `+${added.toLocaleString()}`,
+        tone: "positive",
+        icon: "server",
+        dividerBefore: false,
+      });
+    }
+    if (removed > 0) {
+      pushLine({
+        label: "Removed IPs",
+        value: `-${removed.toLocaleString()}`,
+        tone: "negative",
+        icon: "server",
+        dividerBefore: false,
+      });
+    }
+  }
+
+  if (findingsDiff.comparable) {
+    pushLine({
+      label: "New Findings",
+      value: `+${findingsDiff.summary.added.toLocaleString()}`,
+      tone: "positive",
+      icon: "finding",
+      dividerBefore: changes.lines.length > 0,
+    });
+  }
+
+  return changes;
+}
+
+async function loadTargetUrlSources(targetDomainId: string) {
+  const rows = await prisma.discoveredUrl.findMany({
+    where: { targetDomainId },
+    select: { engines: true },
+    take: 50_000,
+  });
+
+  const engineCounts = new Map<string, number>();
+  for (const row of rows) {
+    const engines = row.engines ?? [];
+    if (engines.length === 0) {
+      engineCounts.set("Unknown", (engineCounts.get("Unknown") ?? 0) + 1);
+    } else {
+      for (const engine of engines) {
+        const label = formatEngineLabel(engine);
+        engineCounts.set(label, (engineCounts.get(label) ?? 0) + 1);
+      }
+    }
+  }
+
+  const sourceEntries = [...engineCounts.entries()].sort((a, b) => b[1] - a[1]);
+  const urlTotalForSources = sourceEntries.reduce((s, [, n]) => s + n, 0);
+  const sources: SummarySourceSlice[] = sourceEntries.slice(0, 4).map(([label, count], i) => ({
+    label,
+    count,
+    percent: urlTotalForSources ? Math.round((count / urlTotalForSources) * 1000) / 10 : 0,
+    color: SOURCE_COLORS[i % SOURCE_COLORS.length],
+  }));
+
+  return { sources, urlTotalForSources };
+}
+
+/** Global target summary — same shape as scan summary, aggregated across all scans. */
+export async function loadTargetSummary(targetDomainId: string): Promise<ScanSummaryData> {
+  const [findingGroups, urlCategoryCounts, categories, latestFindingRows, latestScan] =
+    await Promise.all([
+      prisma.analysisFinding.groupBy({
+        by: ["findingType"],
+        where: { targetDomainId },
+        _count: { _all: true },
+        orderBy: { _count: { findingType: "desc" } },
+      }),
+      countDiscoveredUrlsByCategory(prisma, targetDomainId),
+      prisma.extensionCategory.findMany({
+        select: { id: true, slug: true, displayName: true },
+      }),
+      prisma.analysisFinding.findMany({
+        where: { targetDomainId },
+        orderBy: { createdAt: "desc" },
+        take: 5,
+        include: {
+          discoveredUrl: { select: { urlText: true } },
+        },
+      }),
+      prisma.scanJob.findFirst({
+        where: { targetDomainId, status: ScanJobStatus.COMPLETED },
+        orderBy: [{ completedAt: "desc" }, { createdAt: "desc" }],
+        select: {
+          id: true,
+          completedAt: true,
+          createdAt: true,
+          observedVersion: true,
+        },
+      }),
+    ]);
+
+  const previousScan = latestScan
+    ? await prisma.scanJob.findFirst({
+        where: {
+          targetDomainId,
+          status: ScanJobStatus.COMPLETED,
+          id: { not: latestScan.id },
+          ...(latestScan.completedAt ? { completedAt: { lt: latestScan.completedAt } } : {}),
+        },
+        orderBy: [{ completedAt: "desc" }, { createdAt: "desc" }],
+        select: { id: true, completedAt: true, createdAt: true, observedVersion: true },
+      })
+    : null;
+
+  const emptyPrevious = new Map<string, number>();
+
+  const findingsItems = findingGroups.slice(0, 10).map((g) => ({
+    label: g.findingType,
+    count: g._count._all,
+  }));
+  const findingsTop10 = buildRankRows(findingsItems, emptyPrevious, resolveFindingRankVisual);
+  const findingsTypeTotal = findingGroups.length;
+
+  const urlCategoryItems = buildUrlCategoryRankItems(urlCategoryCounts, categories);
+  const urlCategoriesTop10 = buildRankRows(
+    urlCategoryItems.map(({ label, count }) => ({ label, count })),
+    emptyPrevious,
+    resolveCategoryRankVisual,
+  );
+  const urlCategoryTotal = countUrlCategoryBuckets(urlCategoryCounts);
+
+  let changes: ScanSummaryData["changes"] = {
+    baselineScanId: null,
+    baselineLabel: null,
+    lines: [],
+  };
+
+  if (latestScan && previousScan) {
+    const availability = getObservedAvailability(latestScan);
+    changes = await buildChangesSincePreviousScan(previousScan, latestScan.id, availability);
+  }
+
+  const latestFindings = latestFindingRows.map((f) => ({
+    id: f.id,
+    findingType: f.findingType,
+    url: f.discoveredUrl.urlText,
+    description: f.snippet
+      ? f.snippet.length > 80
+        ? `${f.snippet.slice(0, 80)}…`
+        : f.snippet
+      : `Found ${formatFindingFoundAt(f.createdAt)}`,
+  }));
+
+  const { sources, urlTotalForSources } = await loadTargetUrlSources(targetDomainId);
+
+  const discoveryTimeline = await loadDiscoveryTimeline(
+    targetDomainId,
+    latestScan?.id ?? "",
+  );
+
+  return {
+    findingsTop10,
+    findingsTypeTotal,
+    urlCategoriesTop10,
+    urlCategoryTotal,
+    changes,
+    latestFindings,
+    sources,
+    urlTotalForSources,
+    discoveryTimeline,
+  };
+}
+
+function buildSourcesFromObservedUrls(
+  urlRows: {
+    engines: EngineProvider[];
+    discoveredUrl: { engines: EngineProvider[] } | null;
+  }[],
+  enabledEngines: EngineProvider[],
+): { sources: SummarySourceSlice[]; urlTotalForSources: number } {
+  const engineCounts = new Map<string, number>();
+
+  for (const row of urlRows) {
+    const engines = enginesObservedInScan(
+      row.engines,
+      row.discoveredUrl?.engines,
+      enabledEngines,
+    );
+    if (engines.length === 0) {
+      engineCounts.set("Unknown", (engineCounts.get("Unknown") ?? 0) + 1);
+      continue;
+    }
+    for (const engine of engines) {
+      const label = formatEngineLabel(engine);
+      engineCounts.set(label, (engineCounts.get(label) ?? 0) + 1);
+    }
+  }
+
+  const sourceEntries = [...engineCounts.entries()].sort((a, b) => b[1] - a[1]);
+  const urlTotalForSources = sourceEntries.reduce((s, [, n]) => s + n, 0);
+  const sources: SummarySourceSlice[] = sourceEntries.slice(0, 4).map(([label, count], i) => ({
+    label,
+    count,
+    percent: urlTotalForSources ? Math.round((count / urlTotalForSources) * 1000) / 10 : 0,
+    color: SOURCE_COLORS[i % SOURCE_COLORS.length],
+  }));
+
+  return { sources, urlTotalForSources };
+}
+
 export async function loadScanSummary(
   scanId: string,
   targetDomainId: string,
   availability: ObservedAvailability,
   scanCompletedAt: Date | null,
 ): Promise<ScanSummaryData> {
-  const observedUrlModel = (
-    prisma as typeof prisma & {
-      scanObservedUrl: {
-        findMany: (args: Record<string, unknown>) => Promise<
-          {
-            id: string;
-            discoveredUrl: { engines: string[] } | null;
-          }[]
-        >;
-      };
-    }
-  ).scanObservedUrl;
-
   const previousScan = await prisma.scanJob.findFirst({
     where: {
       targetDomainId,
@@ -305,8 +590,12 @@ export async function loadScanSummary(
     select: { id: true, completedAt: true, createdAt: true },
   });
 
-  const [findingGroups, urlCategoryCounts, categories, latestFindingRows] =
+  const [scanJob, findingGroups, urlCategoryCounts, categories, latestFindingRows] =
     await Promise.all([
+      prisma.scanJob.findUnique({
+        where: { id: scanId },
+        select: { config: true },
+      }),
       prisma.analysisFinding.groupBy({
         by: ["findingType"],
         where: { scanJobId: scanId },
@@ -374,110 +663,13 @@ export async function loadScanSummary(
   );
   const urlCategoryTotal = countUrlCategoryBuckets(urlCategoryCounts);
 
-  const changes: ScanSummaryData["changes"] = {
-    baselineScanId: previousScan?.id ?? null,
-    baselineLabel: previousScan
-      ? (previousScan.completedAt ?? previousScan.createdAt).toISOString().slice(0, 10)
-      : null,
-    lines: [],
-  };
-
-  if (previousScan) {
-    const baselineAvailability = { findings: "ready" as const, subdomains: availability.subdomains, urls: availability.urls, ips: availability.ips };
-    const [findingsDiff, subdomainsDiff, urlsDiff, ipsDiff] = await Promise.all([
-      loadFindingsCompareDiff(previousScan.id, scanId, 500),
-      loadSubdomainsCompareDiff(
-        previousScan.id,
-        scanId,
-        500,
-        availability,
-        baselineAvailability,
-      ),
-      loadUrlsCompareDiff(previousScan.id, scanId, 500, availability, baselineAvailability),
-      loadIpResolutionsCompareDiff(previousScan.id, scanId, 500, availability, baselineAvailability),
-    ]);
-
-    const pushLine = (line: SummaryChangeLine) => changes.lines.push(line);
-
-    if (subdomainsDiff.comparable) {
-      pushLine({
-        label: "New Subdomains",
-        value: `+${subdomainsDiff.summary.added.toLocaleString()}`,
-        tone: "positive",
-        icon: "globe",
-      });
-    }
-
-    if (urlsDiff.comparable) {
-      pushLine({
-        label: "New URLs",
-        value: `+${urlsDiff.summary.added.toLocaleString()}`,
-        tone: "positive",
-        icon: "link",
-      });
-    }
-
-    const dividerBeforeRemoved = changes.lines.length > 0;
-
-    if (subdomainsDiff.comparable) {
-      pushLine({
-        label: "Removed Subdomains",
-        value:
-          subdomainsDiff.summary.removed > 0
-            ? `-${subdomainsDiff.summary.removed.toLocaleString()}`
-            : "0",
-        tone: "negative",
-        icon: "globe",
-        dividerBefore: dividerBeforeRemoved,
-      });
-    }
-
-    if (urlsDiff.comparable) {
-      pushLine({
-        label: "Removed URLs",
-        value:
-          urlsDiff.summary.removed > 0
-            ? `-${urlsDiff.summary.removed.toLocaleString()}`
-            : "0",
-        tone: "negative",
-        icon: "link-removed",
-        dividerBefore: dividerBeforeRemoved && !subdomainsDiff.comparable,
-      });
-    }
-
-    if (ipsDiff.comparable) {
-      const added = ipsDiff.summary.added;
-      const removed = ipsDiff.summary.removed;
-      if (added > 0) {
-        pushLine({
-          label: "New IPs",
-          value: `+${added.toLocaleString()}`,
-          tone: "positive",
-          icon: "server",
-          dividerBefore: false,
-        });
-      }
-      if (removed > 0) {
-        pushLine({
-          label: "Removed IPs",
-          value: `-${removed.toLocaleString()}`,
-          tone: "negative",
-          icon: "server",
-          dividerBefore: false, // Could be handled better, but fine for now
-        });
-      }
-    }
-
-    if (findingsDiff.comparable) {
-      pushLine({
-        label: "New Findings",
-        value: `+${findingsDiff.summary.added.toLocaleString()}`,
-        tone: "positive",
-        icon: "finding",
-        dividerBefore: changes.lines.length > 0,
-      });
-    }
-  }
+  const changes: ScanSummaryData["changes"] = previousScan
+    ? await buildChangesSincePreviousScan(previousScan, scanId, availability)
+    : {
+        baselineScanId: null,
+        baselineLabel: null,
+        lines: [],
+      };
 
   const latestFindings = latestFindingRows.map((f) => ({
     id: f.id,
@@ -490,37 +682,21 @@ export async function loadScanSummary(
       : `Found ${formatFindingFoundAt(f.createdAt)}`,
   }));
 
-  const engineCounts = new Map<string, number>();
-  if (availability.urls === "ready") {
-    const urlRows = await observedUrlModel.findMany({
-      where: { scanJobId: scanId },
-      select: {
-        id: true,
-        discoveredUrl: { select: { engines: true } },
-      },
-      take: 50_000,
-    });
-    for (const row of urlRows) {
-      const engines = row.discoveredUrl?.engines ?? [];
-      if (engines.length === 0) {
-        engineCounts.set("Unknown", (engineCounts.get("Unknown") ?? 0) + 1);
-      } else {
-        for (const engine of engines) {
-          const label = formatEngineLabel(engine);
-          engineCounts.set(label, (engineCounts.get(label) ?? 0) + 1);
-        }
-      }
-    }
-  }
-
-  const sourceEntries = [...engineCounts.entries()].sort((a, b) => b[1] - a[1]);
-  const urlTotalForSources = sourceEntries.reduce((s, [, n]) => s + n, 0);
-  const sources: SummarySourceSlice[] = sourceEntries.slice(0, 4).map(([label, count], i) => ({
-    label,
-    count,
-    percent: urlTotalForSources ? Math.round((count / urlTotalForSources) * 1000) / 10 : 0,
-    color: SOURCE_COLORS[i % SOURCE_COLORS.length],
-  }));
+  const enabledEngines = parseScanEnginesEnabled(scanJob?.config);
+  const { sources, urlTotalForSources } =
+    availability.urls === "ready"
+      ? buildSourcesFromObservedUrls(
+          await prisma.scanObservedUrl.findMany({
+            where: { scanJobId: scanId },
+            select: {
+              engines: true,
+              discoveredUrl: { select: { engines: true } },
+            },
+            take: 50_000,
+          }),
+          enabledEngines,
+        )
+      : { sources: [], urlTotalForSources: 0 };
 
   const discoveryTimeline = await loadDiscoveryTimeline(targetDomainId, scanId);
 

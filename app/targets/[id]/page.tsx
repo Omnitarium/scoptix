@@ -1,7 +1,8 @@
 import Link from "next/link";
 import { notFound } from "next/navigation";
-import { PageHeader } from "@/components/page-header";
-import { DeleteTargetButton } from "@/components/delete-target-button";
+import { ScanJobStatus } from "@prisma/client";
+
+import { TargetDetailHeader } from "@/components/targets/target-detail-header";
 import { TablePagination, normalizePageSize } from "@/components/table-pagination";
 import { UrlFiltersToolbar } from "@/components/url-filters-toolbar";
 import { urlExcludeWhere, normalizeExcludeKeywords } from "@/lib/url-exclude-query";
@@ -19,16 +20,22 @@ import {
   loadExtensionSuffixRules,
   urlCategoryPathnameWhere,
 } from "@/lib/extension-category";
+import { ScanPanelHeading } from "@/components/scans/scan-panel-heading";
 import { ScanDetailTabs } from "@/components/scans/scan-detail-tabs";
-import { TopBar } from "@/components/top-bar";
+import { ScanMetricCards } from "@/components/scans/scan-metric-cards";
+import { ScanSummaryTab } from "@/components/scans/scan-summary-tab";
+import { loadTargetSummary } from "@/lib/scan-summary";
 import { TargetIpsTab } from "@/components/targets/target-ips-tab";
 import {
   IconAlertTriangle,
   IconClock,
+  IconFileText,
+  IconFolder,
   IconGlobe,
   IconLink,
   IconServer,
 } from "@/components/ui-icons";
+import { formatScanDateTime, formatScanDuration } from "@/lib/scan-format";
 import { parseIpTableSort, targetIpOrderBy } from "@/lib/ip-table-sort";
 
 export const dynamic = "force-dynamic";
@@ -45,6 +52,10 @@ function sp(v: string | string[] | undefined): string {
   return "";
 }
 
+function countLabel(value: number | null) {
+  return value == null ? "—" : value.toLocaleString();
+}
+
 export default async function TargetDetailPage({
   params,
   searchParams,
@@ -54,7 +65,16 @@ export default async function TargetDetailPage({
 }) {
   const { id } = await params;
   const rawSp = (await searchParams) ?? {};
-  const tab = (sp(rawSp.tab) || "urls").toLowerCase();
+  const tabRaw = (sp(rawSp.tab) || "summary").toLowerCase();
+  const tab =
+    tabRaw === "summary" ||
+    tabRaw === "subdomains" ||
+    tabRaw === "urls" ||
+    tabRaw === "ips" ||
+    tabRaw === "findings" ||
+    tabRaw === "scans"
+      ? tabRaw
+      : "summary";
   const q = sp(rawSp.q);
   const hideSubRaw = parseCsvParam(rawSp.hideSub);
   const hideKwRaw = parseCsvParam(rawSp.hideKw);
@@ -74,19 +94,33 @@ export default async function TargetDetailPage({
 
   /* C1: Lazy-load — only run queries needed for the active tab */
 
+  /** Subdomains that actually have discovered URLs for this target (hide picker scope). */
+  const subdomainWithUrlsWhere = {
+    targetDomainId: target.id,
+    discoveredUrls: { some: { targetDomainId: target.id } },
+  } as const;
+
+  const [subdomainWithUrlCount, urlCategoryCounts, latestCompletedScan, scanCount] =
+    await Promise.all([
+      prisma.subdomain.count({ where: subdomainWithUrlsWhere }),
+      countDiscoveredUrlsByCategory(prisma, target.id),
+      prisma.scanJob.findFirst({
+        where: { targetDomainId: target.id, status: ScanJobStatus.COMPLETED },
+        orderBy: { completedAt: "desc" },
+        select: { id: true, startedAt: true, completedAt: true },
+      }),
+      prisma.scanJob.count({ where: { targetDomainId: target.id } }),
+    ]);
+
+  const categorizedUrlCount = urlCategoryCounts.categorizedCount;
+
   /* Category data — only needed for "urls" tab */
   const categories =
     tab === "urls"
       ? await prisma.extensionCategory.findMany({ orderBy: { slug: "asc" } })
       : [];
 
-  const [urlCategoryCounts, suffixRules] =
-    tab === "urls"
-      ? await Promise.all([
-          countDiscoveredUrlsByCategory(prisma, target.id),
-          loadExtensionSuffixRules(prisma),
-        ])
-      : [null, []];
+  const suffixRules = tab === "urls" ? await loadExtensionSuffixRules(prisma) : [];
   const countByCategoryId = urlCategoryCounts?.countByCategoryId ?? new Map<number, number>();
   const uncategorizedCount = urlCategoryCounts?.uncategorizedCount ?? 0;
   const categoryById = new Map(
@@ -103,12 +137,6 @@ export default async function TargetDetailPage({
   const urlSearchFilter = urlTextSearchWhere(q);
 
   const hideKw = normalizeExcludeKeywords(hideKwRaw);
-
-  /** Subdomains that actually have discovered URLs for this target (hide picker scope). */
-  const subdomainWithUrlsWhere = {
-    targetDomainId: target.id,
-    discoveredUrls: { some: { targetDomainId: target.id } },
-  } as const;
 
   const validatedHideSubs =
     tab === "urls" && hideSubRaw.length > 0
@@ -220,6 +248,9 @@ export default async function TargetDetailPage({
         })
       : [];
 
+  const summaryData =
+    tab === "summary" ? await loadTargetSummary(target.id) : null;
+
   const scanJobs =
     tab === "scans"
       ? await prisma.scanJob.findMany({
@@ -241,11 +272,11 @@ export default async function TargetDetailPage({
 
   const targetDetailTabs = [
     {
-      key: "urls",
-      label: "URLs",
-      icon: IconLink,
-      href: tabHref("urls"),
-      count: targetTabCount(target.cachedUrlCount),
+      key: "summary",
+      label: "Summary",
+      icon: IconFileText,
+      href: tabHref("summary"),
+      count: null,
     },
     {
       key: "subdomains",
@@ -255,11 +286,11 @@ export default async function TargetDetailPage({
       count: targetTabCount(target.cachedSubdomainCount),
     },
     {
-      key: "findings",
-      label: "Findings",
-      icon: IconAlertTriangle,
-      href: tabHref("findings"),
-      count: targetTabCount(target.cachedFindingCount),
+      key: "urls",
+      label: "URLs",
+      icon: IconLink,
+      href: tabHref("urls"),
+      count: targetTabCount(target.cachedUrlCount),
     },
     {
       key: "ips",
@@ -269,6 +300,13 @@ export default async function TargetDetailPage({
       count: targetTabCount(target.cachedIpCount),
     },
     {
+      key: "findings",
+      label: "Findings",
+      icon: IconAlertTriangle,
+      href: tabHref("findings"),
+      count: targetTabCount(target.cachedFindingCount),
+    },
+    {
       key: "scans",
       label: "Scans",
       icon: IconClock,
@@ -276,6 +314,13 @@ export default async function TargetDetailPage({
       count: null,
     },
   ];
+
+  const compareHref =
+    latestCompletedScan && summaryData?.changes.baselineScanId
+      ? `/scans/${latestCompletedScan.id}/observed?tab=compare&compare=${summaryData.changes.baselineScanId}`
+      : latestCompletedScan
+        ? `/scans/${latestCompletedScan.id}/observed?tab=compare`
+        : tabHref("scans");
 
   const targetBasePath = `/targets/${targetId}`;
 
@@ -308,54 +353,92 @@ export default async function TargetDetailPage({
     return `/targets/${targetId}?${p.toString()}`;
   }
 
-  return (
-    <>
-      <TopBar breadcrumb={`/ targets / ${target.domainNormalized}`} />
-      <main className="min-h-0 flex-1 overflow-y-auto px-6 py-8">
-        {/* ── Breadcrumb + Header ── */}
-        <div className="space-y-2">
-          <p className="text-[11px] font-mono text-muted">
-            <Link href="/targets" className="text-accent/80 hover:underline">Targets</Link>
-            <span className="text-line"> / </span>
-            <span className="text-cream">{target.domainNormalized}</span>
-          </p>
-          <div className="flex items-center justify-between gap-4">
-            <PageHeader
-              eyebrow="Results"
-              title={target.domainNormalized}
-              titleClassName="font-mono"
-              description=""
-            />
-            <DeleteTargetButton targetId={target.id} targetName={target.domainNormalized} />
-          </div>
-        </div>
+  const targetMetricCards = [
+    {
+      icon: IconGlobe,
+      iconBg: "scx-metric-icon-badge--success",
+      iconColor: "",
+      value: countLabel(subdomainWithUrlCount),
+      label: "Subdomains (with URLs)",
+    },
+    {
+      icon: IconServer,
+      iconBg: "scx-metric-icon-badge--success",
+      iconColor: "",
+      value: countLabel(target.cachedIpCount),
+      label: "IP Addresses",
+    },
+    {
+      icon: IconLink,
+      iconBg: "scx-metric-icon-badge--success",
+      iconColor: "",
+      value: countLabel(target.cachedUrlCount),
+      label: "URLs",
+    },
+    {
+      icon: IconAlertTriangle,
+      iconBg: "scx-metric-icon-badge--success",
+      iconColor: "",
+      value: countLabel(target.cachedFindingCount),
+      label: "Findings",
+    },
+    {
+      icon: IconFolder,
+      iconBg: "scx-metric-icon-badge--success",
+      iconColor: "",
+      value: countLabel(categorizedUrlCount),
+      label: "Categories",
+    },
+    {
+      icon: IconClock,
+      iconBg: "scx-metric-icon-badge--success",
+      iconColor: "",
+      value: formatScanDuration(latestCompletedScan?.startedAt, latestCompletedScan?.completedAt),
+      label: "Scan duration",
+      trend: latestCompletedScan ? "Latest completed scan" : undefined,
+      trendColor: "text-muted",
+    },
+  ];
 
-        {/* ── Stats bar ── */}
-        <div className="scx-target-stats-grid mt-6">
-          <div className="glass-panel rounded-xl px-4 py-3 text-center">
-            <div className="font-mono text-2xl text-cream">{target.cachedSubdomainCount.toLocaleString()}</div>
-            <div className="mt-1 text-[10px] font-semibold uppercase tracking-wider text-muted">Subdomains</div>
-          </div>
-          <div className="glass-panel rounded-xl px-4 py-3 text-center">
-            <div className="font-mono text-2xl text-cream">{target.cachedUrlCount.toLocaleString()}</div>
-            <div className="mt-1 text-[10px] font-semibold uppercase tracking-wider text-muted">URLs</div>
-          </div>
-          <div className="glass-panel rounded-xl px-4 py-3 text-center">
-            <div className="font-mono text-2xl text-cream">{target.cachedFindingCount.toLocaleString()}</div>
-            <div className="mt-1 text-[10px] font-semibold uppercase tracking-wider text-muted">Findings</div>
-          </div>
-        </div>
+  return (
+    <div className="flex min-h-0 flex-1 flex-col overflow-hidden">
+      <TargetDetailHeader
+        domain={target.domainNormalized}
+        updatedAt={formatScanDateTime(target.updatedAt)}
+        scanCount={scanCount}
+        latestScanDuration={formatScanDuration(
+          latestCompletedScan?.startedAt,
+          latestCompletedScan?.completedAt,
+        )}
+        targetId={target.id}
+      />
+
+      <div className="min-h-0 flex-1 overflow-y-auto px-6 py-5">
+        <ScanMetricCards metrics={targetMetricCards} />
 
         <div className="mt-6">
           <ScanDetailTabs tabs={targetDetailTabs} activeKey={tab} />
         </div>
 
         <div>
+          {tab === "summary" && summaryData && (
+            <ScanSummaryTab
+              data={summaryData}
+              basePath={targetBasePath}
+              compareHref={compareHref}
+              scope="target"
+            />
+          )}
+
           {/* ════════ URLs Tab ════════ */}
           {tab === "urls" && (
             <div className="glass-panel overflow-hidden rounded-2xl">
               {/* Category filters + search */}
               <div className="border-b border-line px-5 py-4 space-y-3">
+                <ScanPanelHeading
+                  title="Global URL directory"
+                  description="All URLs discovered for this target across every scan."
+                />
                 <UrlFiltersToolbar
                   hrefContext={{ scope: "target", targetId: target.id }}
                   preserve={urlTabPreserve}
@@ -452,6 +535,12 @@ export default async function TargetDetailPage({
           {/* ════════ Subdomains Tab ════════ */}
           {tab === "subdomains" && (
             <div className="glass-panel overflow-hidden rounded-2xl">
+              <div className="border-b border-line bg-[var(--table-header-bg)] px-5 py-4">
+                <ScanPanelHeading
+                  title="Global subdomain directory"
+                  description="All subdomains discovered for this target across every scan."
+                />
+              </div>
               <div className="hidden border-b border-line bg-[var(--table-header-bg)] px-5 py-2.5 text-[10px] font-semibold uppercase tracking-wider text-muted sm:grid sm:grid-cols-12 sm:gap-3">
                 <div className="col-span-7">Hostname</div>
                 <div className="col-span-3">First seen</div>
@@ -477,63 +566,68 @@ export default async function TargetDetailPage({
             </div>
           )}
 
-          {/* ════════ Findings Tab (TABLE, not cards) ════════ */}
+          {/* ════════ Findings Tab ════════ */}
           {tab === "findings" && (
-            <div className="space-y-4">
-              <div className="flex flex-wrap items-center gap-2">
-                <Link
-                  href={findingFilterHref({ type: undefined })}
-                  className={[
-                    "rounded-lg border px-3 py-1.5 text-[12px] transition-colors",
-                    !fType
-                      ? "border-accent/60 bg-accent/10 text-cream"
-                      : "border-line text-muted hover:bg-[var(--nav-hover-bg)] hover:text-cream",
-                  ].join(" ")}
-                >
-                  All ({target.cachedFindingCount.toLocaleString()})
-                </Link>
-                {findingGroups.map((g) => (
+            <div className="glass-panel overflow-hidden rounded-2xl">
+              <div className="border-b border-line px-5 py-4 space-y-3">
+                <ScanPanelHeading
+                  title="Global findings directory"
+                  description="All findings discovered for this target across every scan."
+                />
+                <div className="flex flex-wrap items-center gap-2">
                   <Link
-                    key={g.findingType}
-                    href={findingFilterHref({ type: g.findingType })}
+                    href={findingFilterHref({ type: undefined })}
                     className={[
                       "rounded-lg border px-3 py-1.5 text-[12px] transition-colors",
-                      fType === g.findingType
+                      !fType
                         ? "border-accent/60 bg-accent/10 text-cream"
                         : "border-line text-muted hover:bg-[var(--nav-hover-bg)] hover:text-cream",
                     ].join(" ")}
                   >
-                    {g.findingType} ({g._count._all.toLocaleString()})
+                    All ({target.cachedFindingCount.toLocaleString()})
                   </Link>
-                ))}
+                  {findingGroups.map((g) => (
+                    <Link
+                      key={g.findingType}
+                      href={findingFilterHref({ type: g.findingType })}
+                      className={[
+                        "rounded-lg border px-3 py-1.5 text-[12px] transition-colors",
+                        fType === g.findingType
+                          ? "border-accent/60 bg-accent/10 text-cream"
+                          : "border-line text-muted hover:bg-[var(--nav-hover-bg)] hover:text-cream",
+                      ].join(" ")}
+                    >
+                      {g.findingType} ({g._count._all.toLocaleString()})
+                    </Link>
+                  ))}
+                </div>
+
+                <div className="flex flex-wrap items-center gap-2">
+                  <span className="text-[10px] font-semibold uppercase tracking-wider text-muted">
+                    Source:
+                  </span>
+                  {[
+                    { label: "All", value: undefined },
+                    { label: "URL String", value: "URL_STRING" },
+                    { label: "Response Body", value: "RESPONSE_BODY" },
+                  ].map((opt) => (
+                    <Link
+                      key={opt.label}
+                      href={findingFilterHref({ source: opt.value })}
+                      className={[
+                        "rounded-lg border px-3 py-1.5 text-[11px] transition-colors",
+                        fSource === opt.value || (!fSource && !opt.value)
+                          ? "border-accent/40 bg-accent/8 text-cream"
+                          : "border-line text-muted hover:bg-[var(--nav-hover-bg)] hover:text-cream",
+                      ].join(" ")}
+                    >
+                      {opt.label}
+                    </Link>
+                  ))}
+                </div>
               </div>
 
-              <div className="flex flex-wrap items-center gap-2">
-                <span className="text-[10px] font-semibold uppercase tracking-wider text-muted">
-                  Source:
-                </span>
-                {[
-                  { label: "All", value: undefined },
-                  { label: "URL String", value: "URL_STRING" },
-                  { label: "Response Body", value: "RESPONSE_BODY" },
-                ].map((opt) => (
-                  <Link
-                    key={opt.label}
-                    href={findingFilterHref({ source: opt.value })}
-                    className={[
-                      "rounded-lg border px-3 py-1.5 text-[11px] transition-colors",
-                      fSource === opt.value || (!fSource && !opt.value)
-                        ? "border-accent/40 bg-accent/8 text-cream"
-                        : "border-line text-muted hover:bg-[var(--nav-hover-bg)] hover:text-cream",
-                    ].join(" ")}
-                  >
-                    {opt.label}
-                  </Link>
-                ))}
-              </div>
-
-              <div className="glass-panel overflow-hidden rounded-2xl">
-                <div className="hidden border-b border-line bg-[var(--table-header-bg)] px-5 py-2.5 text-[10px] font-semibold uppercase tracking-wider text-muted lg:grid lg:grid-cols-12 lg:gap-3">
+              <div className="hidden border-b border-line bg-[var(--table-header-bg)] px-5 py-2.5 text-[10px] font-semibold uppercase tracking-wider text-muted lg:grid lg:grid-cols-12 lg:gap-3">
                   <div className="col-span-1">Type</div>
                   <div className="col-span-1">Engine</div>
                   <div className="col-span-6">URL</div>
@@ -588,18 +682,17 @@ export default async function TargetDetailPage({
                       </div>
                     ))
                   )}
-                </div>
-                
-                <TablePagination
-                  currentPage={safeFindingPage}
-                  totalPages={totalFindingsPages}
-                  totalItems={totalFindings}
-                  perPage={perPage}
-                  basePath={targetBasePath}
-                  fixedParams={findingFixedParams}
-                  pageParam="fPage"
-                />
               </div>
+
+              <TablePagination
+                currentPage={safeFindingPage}
+                totalPages={totalFindingsPages}
+                totalItems={totalFindings}
+                perPage={perPage}
+                basePath={targetBasePath}
+                fixedParams={findingFixedParams}
+                pageParam="fPage"
+              />
             </div>
           )}
 
@@ -672,7 +765,7 @@ export default async function TargetDetailPage({
             </div>
           )}
         </div>
-      </main>
-    </>
+      </div>
+    </div>
   );
 }

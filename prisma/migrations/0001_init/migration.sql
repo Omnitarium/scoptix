@@ -25,6 +25,7 @@ CREATE TABLE "target_domain" (
     "cached_url_count" INTEGER NOT NULL DEFAULT 0,
     "cached_finding_count" INTEGER NOT NULL DEFAULT 0,
     "cached_subdomain_count" INTEGER NOT NULL DEFAULT 0,
+    "cached_ip_count" INTEGER NOT NULL DEFAULT 0,
     "created_at" TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP,
     "updated_at" TIMESTAMP(3) NOT NULL,
 
@@ -61,6 +62,7 @@ CREATE TABLE "scan_job" (
     "observed_subdomain_count" INTEGER,
     "observed_url_count" INTEGER,
     "observed_finding_count" INTEGER,
+    "observed_ip_count" INTEGER,
     "observed_version" INTEGER,
 
     CONSTRAINT "scan_job_pkey" PRIMARY KEY ("id")
@@ -144,9 +146,50 @@ CREATE TABLE "scan_observed_url" (
     "url_sha256" CHAR(64) NOT NULL,
     "pathname_extension" TEXT,
     "extension_category_id" INTEGER,
+    "engines" "EngineProvider"[] DEFAULT ARRAY[]::"EngineProvider"[],
     "created_at" TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP,
 
     CONSTRAINT "scan_observed_url_pkey" PRIMARY KEY ("id")
+);
+
+-- CreateTable
+CREATE TABLE "ip_resolution" (
+    "id" TEXT NOT NULL,
+    "target_domain_id" TEXT NOT NULL,
+    "ip_address" TEXT NOT NULL,
+    "latest_resolved_at" TIMESTAMP(3) NOT NULL,
+    "latest_seen_by" TEXT NOT NULL,
+    "hostname_count" INTEGER NOT NULL DEFAULT 1,
+    "created_at" TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    "updated_at" TIMESTAMP(3) NOT NULL,
+
+    CONSTRAINT "ip_resolution_pkey" PRIMARY KEY ("id")
+);
+
+-- CreateTable
+CREATE TABLE "ip_resolution_sighting" (
+    "id" TEXT NOT NULL,
+    "ip_resolution_id" TEXT NOT NULL,
+    "scan_job_id" TEXT,
+    "hostname_normalized" TEXT NOT NULL,
+    "last_resolved_at" TIMESTAMP(3) NOT NULL,
+    "created_at" TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP,
+
+    CONSTRAINT "ip_resolution_sighting_pkey" PRIMARY KEY ("id")
+);
+
+-- CreateTable
+CREATE TABLE "scan_observed_ip_resolution" (
+    "id" TEXT NOT NULL,
+    "scan_job_id" TEXT NOT NULL,
+    "target_domain_id" TEXT NOT NULL,
+    "ip_resolution_id" TEXT,
+    "ip_address" TEXT NOT NULL,
+    "last_resolved_at" TIMESTAMP(3) NOT NULL,
+    "reported_by_hostname" TEXT NOT NULL,
+    "created_at" TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP,
+
+    CONSTRAINT "scan_observed_ip_resolution_pkey" PRIMARY KEY ("id")
 );
 
 -- CreateTable
@@ -158,6 +201,10 @@ CREATE TABLE "api_key" (
     "proxy_url" TEXT,
     "usage_count_date" DATE NOT NULL,
     "usage_count" INTEGER NOT NULL DEFAULT 0,
+    "usage_week_key" TEXT NOT NULL,
+    "usage_count_weekly" INTEGER NOT NULL DEFAULT 0,
+    "usage_month_key" TEXT NOT NULL,
+    "usage_count_monthly" INTEGER NOT NULL DEFAULT 0,
     "is_disabled" BOOLEAN NOT NULL DEFAULT false,
     "last_used_at" TIMESTAMP(3),
     "created_at" TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP,
@@ -244,6 +291,27 @@ CREATE INDEX "scan_observed_url_scan_job_id_hostname_normalized_idx" ON "scan_ob
 CREATE UNIQUE INDEX "scan_observed_url_scan_job_id_url_sha256_key" ON "scan_observed_url"("scan_job_id", "url_sha256");
 
 -- CreateIndex
+CREATE INDEX "ip_resolution_target_domain_id_latest_resolved_at_idx" ON "ip_resolution"("target_domain_id", "latest_resolved_at" DESC);
+
+-- CreateIndex
+CREATE UNIQUE INDEX "ip_resolution_target_domain_id_ip_address_key" ON "ip_resolution"("target_domain_id", "ip_address");
+
+-- CreateIndex
+CREATE INDEX "ip_resolution_sighting_ip_resolution_id_idx" ON "ip_resolution_sighting"("ip_resolution_id");
+
+-- CreateIndex
+CREATE UNIQUE INDEX "ip_resolution_sighting_ip_resolution_id_hostname_normalized_key" ON "ip_resolution_sighting"("ip_resolution_id", "hostname_normalized");
+
+-- CreateIndex
+CREATE INDEX "scan_observed_ip_resolution_target_domain_id_idx" ON "scan_observed_ip_resolution"("target_domain_id");
+
+-- CreateIndex
+CREATE INDEX "scan_observed_ip_resolution_scan_job_id_idx" ON "scan_observed_ip_resolution"("scan_job_id");
+
+-- CreateIndex
+CREATE UNIQUE INDEX "scan_observed_ip_resolution_scan_job_id_ip_address_key" ON "scan_observed_ip_resolution"("scan_job_id", "ip_address");
+
+-- CreateIndex
 CREATE INDEX "api_key_provider_is_disabled_idx" ON "api_key"("provider", "is_disabled");
 
 -- AddForeignKey
@@ -299,4 +367,22 @@ ALTER TABLE "scan_observed_url" ADD CONSTRAINT "scan_observed_url_subdomain_id_f
 
 -- AddForeignKey
 ALTER TABLE "scan_observed_url" ADD CONSTRAINT "scan_observed_url_extension_category_id_fkey" FOREIGN KEY ("extension_category_id") REFERENCES "extension_category"("id") ON DELETE SET NULL ON UPDATE CASCADE;
+
+-- AddForeignKey
+ALTER TABLE "ip_resolution" ADD CONSTRAINT "ip_resolution_target_domain_id_fkey" FOREIGN KEY ("target_domain_id") REFERENCES "target_domain"("id") ON DELETE CASCADE ON UPDATE CASCADE;
+
+-- AddForeignKey
+ALTER TABLE "ip_resolution_sighting" ADD CONSTRAINT "ip_resolution_sighting_ip_resolution_id_fkey" FOREIGN KEY ("ip_resolution_id") REFERENCES "ip_resolution"("id") ON DELETE CASCADE ON UPDATE CASCADE;
+
+-- AddForeignKey
+ALTER TABLE "ip_resolution_sighting" ADD CONSTRAINT "ip_resolution_sighting_scan_job_id_fkey" FOREIGN KEY ("scan_job_id") REFERENCES "scan_job"("id") ON DELETE SET NULL ON UPDATE CASCADE;
+
+-- AddForeignKey
+ALTER TABLE "scan_observed_ip_resolution" ADD CONSTRAINT "scan_observed_ip_resolution_scan_job_id_fkey" FOREIGN KEY ("scan_job_id") REFERENCES "scan_job"("id") ON DELETE CASCADE ON UPDATE CASCADE;
+
+-- AddForeignKey
+ALTER TABLE "scan_observed_ip_resolution" ADD CONSTRAINT "scan_observed_ip_resolution_target_domain_id_fkey" FOREIGN KEY ("target_domain_id") REFERENCES "target_domain"("id") ON DELETE CASCADE ON UPDATE CASCADE;
+
+-- AddForeignKey
+ALTER TABLE "scan_observed_ip_resolution" ADD CONSTRAINT "scan_observed_ip_resolution_ip_resolution_id_fkey" FOREIGN KEY ("ip_resolution_id") REFERENCES "ip_resolution"("id") ON DELETE SET NULL ON UPDATE CASCADE;
 

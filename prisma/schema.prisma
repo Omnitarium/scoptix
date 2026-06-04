@@ -221,6 +221,7 @@ model ScanObservedUrl {
   pathnameExtension   String?            @map("pathname_extension")
   extensionCategoryId Int?               @map("extension_category_id")
   extensionCategory   ExtensionCategory? @relation(fields: [extensionCategoryId], references: [id], onDelete: SetNull)
+  engines             EngineProvider[]   @default([])
   createdAt           DateTime           @default(now()) @map("created_at")
 
   @@unique([scanJobId, urlSha256])
