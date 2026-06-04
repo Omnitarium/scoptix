@@ -7,6 +7,7 @@ export type ObservedAvailability = {
   findings: ObservedAvailabilityState;
   subdomains: ObservedAvailabilityState;
   urls: ObservedAvailabilityState;
+  ips: ObservedAvailabilityState;
 };
 
 export type ObservedScanSummary = Prisma.ScanJobGetPayload<{
@@ -20,6 +21,8 @@ export type ObservedScanSummary = Prisma.ScanJobGetPayload<{
     };
   };
 }>;
+
+export type ScanSummaryContext = Pick<ObservedScanSummary, "observedVersion">;
 
 export function normalizeTake(raw: string | null, fallback = 50, max = 200) {
   const n = Number(raw ?? "");
@@ -57,5 +60,6 @@ export function getObservedAvailability(
     findings: "ready",
     subdomains: hasSnapshot ? "ready" : "legacy_unavailable",
     urls: hasSnapshot ? "ready" : "legacy_unavailable",
+    ips: hasSnapshot ? "ready" : "legacy_unavailable",
   };
 }

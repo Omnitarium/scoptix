@@ -189,3 +189,45 @@ export async function loadUrlsCompareDiff(
 
   return sliceDiff(compared, perPage);
 }
+
+export type IpCompareItem = {
+  id: string;
+  ipAddress: string;
+  lastResolvedAt: Date;
+  reportedByHostname: string;
+};
+
+export async function loadIpResolutionsCompareDiff(
+  baselineScanId: string,
+  currentScanId: string,
+  perPage: number,
+  currentAvailability: ObservedAvailability,
+  baselineAvailability: ObservedAvailability | null,
+): Promise<CompareDiffResult<IpCompareItem>> {
+  const comparable =
+    currentAvailability.ips === "ready" &&
+    baselineAvailability?.ips === "ready";
+
+  if (!comparable) {
+    return { comparable: false, reason: "legacy_unavailable" };
+  }
+
+  const [baselineRows, currentRows] = await Promise.all([
+    prisma.scanObservedIpResolution.findMany({
+      where: { scanJobId: baselineScanId },
+      orderBy: { ipAddress: "asc" },
+    }),
+    prisma.scanObservedIpResolution.findMany({
+      where: { scanJobId: currentScanId },
+      orderBy: { ipAddress: "asc" },
+    }),
+  ]);
+
+  const compared = compareByKey(
+    baselineRows,
+    currentRows,
+    (row) => row.ipAddress,
+  );
+
+  return sliceDiff(compared, perPage);
+}

@@ -10,12 +10,14 @@ import {
   IconGlobe,
   IconLink,
   IconList,
+  IconServer,
 } from "@/components/ui-icons";
 import { ScanComparePanel } from "@/components/scan-compare-panel";
 import { ScanDetailHeader } from "@/components/scans/scan-detail-header";
 import { ScanDetailTabs } from "@/components/scans/scan-detail-tabs";
 import { ScanMetricCards } from "@/components/scans/scan-metric-cards";
 import { ScanSummaryTab } from "@/components/scans/scan-summary-tab";
+import { ScanIpsTab } from "@/components/scans/scan-ips-tab";
 import { SubdomainSearchBar } from "@/components/subdomain-search-bar";
 import { UrlFiltersToolbar } from "@/components/url-filters-toolbar";
 import { subdomainHostnameSearchWhere } from "@/lib/subdomain-search-query";
@@ -37,10 +39,12 @@ import {
   loadFindingsCompareDiff,
   loadSubdomainsCompareDiff,
   loadUrlsCompareDiff,
+  loadIpResolutionsCompareDiff,
   type CompareDiffResult,
   type FindingCompareItem,
   type SubdomainCompareItem,
   type UrlCompareItem,
+  type IpCompareItem,
 } from "@/lib/scan-compare-diff";
 import {
   formatScanDateTime,
@@ -51,6 +55,7 @@ import {
   getObservedAvailability,
   getObservedScanSummary,
 } from "@/lib/scan-observed";
+import { parseIpTableSort, scanObservedIpOrderBy } from "@/lib/ip-table-sort";
 import { prisma } from "@/lib/prisma";
 import {
   categorySlugForPathnameExtension,
@@ -129,11 +134,12 @@ export default async function ScanObservedPage({
     tabRaw === "findings" ||
     tabRaw === "subdomains" ||
     tabRaw === "urls" ||
+    tabRaw === "ips" ||
     tabRaw === "compare"
       ? tabRaw
       : "summary";
   const compareSubTab =
-    compareSubTabRaw === "subdomains" || compareSubTabRaw === "urls"
+    compareSubTabRaw === "subdomains" || compareSubTabRaw === "urls" || compareSubTabRaw === "ips"
       ? compareSubTabRaw
       : "findings";
   const page = asPosInt(sp(rawSp.page) || null, 1);
@@ -159,6 +165,7 @@ export default async function ScanObservedPage({
     observedFindingCount?: number | null;
     observedSubdomainCount?: number | null;
     observedUrlCount?: number | null;
+    observedIpCount?: number | null;
   };
   const observedSubdomainModel = (
     prisma as typeof prisma & {
@@ -184,7 +191,7 @@ export default async function ScanObservedPage({
   const availability = getObservedAvailability({
     observedVersion: snapshotScan.observedVersion,
   });
-  const [observedFindingCount, observedSubdomainCount, observedUrlCount, urlCategoryCounts] =
+  const [observedFindingCount, observedSubdomainCount, observedUrlCount, observedIpCount, urlCategoryCounts] =
     await Promise.all([
       snapshotScan.observedFindingCount ??
         prisma.analysisFinding.count({ where: { scanJobId: id } }),
@@ -195,6 +202,10 @@ export default async function ScanObservedPage({
       availability.urls === "ready"
         ? snapshotScan.observedUrlCount ??
           observedUrlModel.count({ where: { scanJobId: id } })
+        : Promise.resolve(null),
+      availability.ips === "ready"
+        ? snapshotScan.observedIpCount ??
+          prisma.scanObservedIpResolution.count({ where: { scanJobId: id } })
         : Promise.resolve(null),
       availability.urls === "ready"
         ? countObservedUrlsByCategory(prisma, id)
@@ -239,14 +250,16 @@ export default async function ScanObservedPage({
   type CompareDiffItem =
     | FindingCompareItem
     | SubdomainCompareItem
-    | UrlCompareItem;
+    | UrlCompareItem
+    | IpCompareItem;
 
   let findingsDiff: CompareDiffResult<FindingCompareItem> | null = null;
   let subdomainsDiff: CompareDiffResult<SubdomainCompareItem> | null = null;
   let urlsDiff: CompareDiffResult<UrlCompareItem> | null = null;
+  let ipsDiff: CompareDiffResult<IpCompareItem> | null = null;
 
   if (tab === "compare" && selectedCompareScan) {
-    [findingsDiff, subdomainsDiff, urlsDiff] = await Promise.all([
+    [findingsDiff, subdomainsDiff, urlsDiff, ipsDiff] = await Promise.all([
       loadFindingsCompareDiff(selectedCompareScan.id, id, perPage),
       loadSubdomainsCompareDiff(
         selectedCompareScan.id,
@@ -262,6 +275,13 @@ export default async function ScanObservedPage({
         availability,
         selectedCompareAvailability,
       ),
+      loadIpResolutionsCompareDiff(
+        selectedCompareScan.id,
+        id,
+        perPage,
+        availability,
+        selectedCompareAvailability,
+      ),
     ]);
   }
 
@@ -271,7 +291,9 @@ export default async function ScanObservedPage({
         ? findingsDiff
         : compareSubTab === "subdomains"
           ? subdomainsDiff
-          : urlsDiff
+          : compareSubTab === "ips"
+            ? ipsDiff
+            : urlsDiff
       : null;
 
   const basePath = `/scans/${id}/observed`;
@@ -484,6 +506,44 @@ export default async function ScanObservedPage({
         })
       : [];
 
+  const ipSort = parseIpTableSort(sp(rawSp.ipSort), sp(rawSp.ipDir), "scan");
+
+  const ipsTotal =
+    tab === "ips" && availability.ips === "ready"
+      ? await prisma.scanObservedIpResolution.count({ where: { scanJobId: id } })
+      : 0;
+  const ipsPages = Math.max(1, Math.ceil(ipsTotal / perPage));
+  const safeIpsPage = Math.min(page, ipsPages);
+  const ips =
+    tab === "ips" && availability.ips === "ready"
+      ? await prisma.scanObservedIpResolution.findMany({
+          where: { scanJobId: id },
+          orderBy: scanObservedIpOrderBy(ipSort),
+          skip: (safeIpsPage - 1) * perPage,
+          take: perPage,
+          select: {
+            id: true,
+            ipResolutionId: true,
+            ipAddress: true,
+            lastResolvedAt: true,
+            reportedByHostname: true,
+            ipResolution: { select: { hostnameCount: true } },
+          },
+        })
+      : [];
+
+  const scanIpRows =
+    tab === "ips" && availability.ips === "ready"
+      ? ips.map((ip) => ({
+          id: ip.id,
+          ipResolutionId: ip.ipResolutionId,
+          ipAddress: ip.ipAddress,
+          lastResolvedAt: ip.lastResolvedAt,
+          hostnameCount: ip.ipResolution?.hostnameCount ?? 1,
+          lastSeenBy: ip.reportedByHostname,
+        }))
+      : [];
+
   function tabHref(nextTab: string) {
     const q = new URLSearchParams();
     q.set("tab", nextTab);
@@ -523,6 +583,13 @@ export default async function ScanObservedPage({
       icon: IconLink,
       href: tabHref("urls"),
       count: countLabel(observedUrlCount),
+    },
+    {
+      key: "ips",
+      label: "IPs",
+      icon: IconServer,
+      href: tabHref("ips"),
+      count: countLabel(observedIpCount),
     },
     {
       key: "compare",
@@ -666,6 +733,7 @@ export default async function ScanObservedPage({
                     { key: "findings", label: "Findings" },
                     { key: "subdomains", label: "Subdomains" },
                     { key: "urls", label: "URLs" },
+                    { key: "ips", label: "IPs" },
                   ] as const
                 ).map((item) => {
                   const q = new URLSearchParams();
@@ -1097,6 +1165,19 @@ export default async function ScanObservedPage({
                 </>
               )}
             </div>
+          )}
+
+          {tab === "ips" && (
+            <ScanIpsTab
+              ips={scanIpRows}
+              totalItems={ipsTotal}
+              currentPage={safeIpsPage}
+              totalPages={ipsPages}
+              perPage={perPage}
+              basePath={basePath}
+              isCompleted={isCompleted}
+              sort={ipSort}
+            />
           )}
         </div>
       </div>

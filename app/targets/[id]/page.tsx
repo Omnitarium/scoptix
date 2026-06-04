@@ -20,6 +20,8 @@ import {
   urlCategoryPathnameWhere,
 } from "@/lib/extension-category";
 import { TopBar } from "@/components/top-bar";
+import { TargetIpsTab } from "@/components/targets/target-ips-tab";
+import { parseIpTableSort, targetIpOrderBy } from "@/lib/ip-table-sort";
 
 export const dynamic = "force-dynamic";
 
@@ -193,6 +195,23 @@ export default async function TargetDetailPage({
         })
       : [];
 
+  const ipSort = parseIpTableSort(sp(rawSp.ipSort), sp(rawSp.ipDir), "target");
+
+  const ipsTotal =
+    tab === "ips" ? await prisma.ipResolution.count({ where: { targetDomainId: target.id } }) : 0;
+  const ipsPages = Math.max(1, Math.ceil(ipsTotal / perPage));
+  const safeIpsPage = Math.min(page, ipsPages);
+
+  const ips =
+    tab === "ips"
+      ? await prisma.ipResolution.findMany({
+          where: { targetDomainId: target.id },
+          orderBy: targetIpOrderBy(ipSort),
+          skip: (safeIpsPage - 1) * perPage,
+          take: perPage,
+        })
+      : [];
+
   const scanJobs =
     tab === "scans"
       ? await prisma.scanJob.findMany({
@@ -206,6 +225,7 @@ export default async function TargetDetailPage({
     { key: "urls", label: "URLs", count: target.cachedUrlCount },
     { key: "subdomains", label: "Subdomains", count: target.cachedSubdomainCount },
     { key: "findings", label: "Findings", count: target.cachedFindingCount },
+    { key: "ips", label: "IPs", count: target.cachedIpCount },
     { key: "scans", label: "Scans", count: undefined },
   ];
 
@@ -557,6 +577,24 @@ export default async function TargetDetailPage({
                 />
               </div>
             </div>
+          )}
+
+          {tab === "ips" && (
+            <TargetIpsTab
+              ips={ips.map((ip) => ({
+                id: ip.id,
+                ipAddress: ip.ipAddress,
+                hostnameCount: ip.hostnameCount,
+                lastResolvedAt: ip.latestResolvedAt,
+                lastSeenBy: ip.latestSeenBy,
+              }))}
+              totalItems={ipsTotal}
+              currentPage={safeIpsPage}
+              totalPages={ipsPages}
+              perPage={perPage}
+              basePath={targetBasePath}
+              sort={ipSort}
+            />
           )}
 
           {/* ════════ Scans Tab ════════ */}

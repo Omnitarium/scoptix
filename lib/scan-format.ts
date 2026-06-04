@@ -1,3 +1,17 @@
+/** ISO-like UTC timestamp for IP directory tables (e.g. 2024-06-16 10:50:21). */
+export function formatIpTableDateTime(value: Date | string | null | undefined) {
+  if (!value) return "—";
+  const d = typeof value === "string" ? new Date(value) : value;
+  if (Number.isNaN(d.getTime())) return "—";
+  const pad = (n: number) => String(n).padStart(2, "0");
+  return `${d.getUTCFullYear()}-${pad(d.getUTCMonth() + 1)}-${pad(d.getUTCDate())} ${pad(d.getUTCHours())}:${pad(d.getUTCMinutes())}:${pad(d.getUTCSeconds())}`;
+}
+
+export function formatHostnameCountLabel(count: number) {
+  const n = Math.max(0, Math.floor(count));
+  return n === 1 ? "1 subdomain" : `${n.toLocaleString()} subdomains`;
+}
+
 export function formatScanDateTime(value: Date | string | null | undefined) {
   if (!value) return "—";
   const d = typeof value === "string" ? new Date(value) : value;

@@ -52,6 +52,7 @@ model TargetDomain {
   cachedUrlCount       Int                     @default(0) @map("cached_url_count")
   cachedFindingCount   Int                     @default(0) @map("cached_finding_count")
   cachedSubdomainCount Int                     @default(0) @map("cached_subdomain_count")
+  cachedIpCount        Int                     @default(0) @map("cached_ip_count")
   createdAt            DateTime                @default(now()) @map("created_at")
   updatedAt            DateTime                @updatedAt @map("updated_at")
   subdomains           Subdomain[]
@@ -60,6 +61,8 @@ model TargetDomain {
   analysisFindings     AnalysisFinding[]
   observedSubdomains   ScanObservedSubdomain[]
   observedUrls         ScanObservedUrl[]
+  ipResolutions        IpResolution[]
+  scanObservedIps      ScanObservedIpResolution[]
 
   @@map("target_domain")
 }
@@ -99,11 +102,14 @@ model ScanJob {
   observedSubdomainCount Int?                    @map("observed_subdomain_count")
   observedUrlCount       Int?                    @map("observed_url_count")
   observedFindingCount   Int?                    @map("observed_finding_count")
+  observedIpCount        Int?                    @map("observed_ip_count")
   observedVersion        Int?                    @map("observed_version")
   discoveredUrls         DiscoveredUrl[]
   analysisFindings       AnalysisFinding[]
   observedSubdomains     ScanObservedSubdomain[]
   observedUrls           ScanObservedUrl[]
+  scanObservedIps        ScanObservedIpResolution[]
+  ipResolutionSightings  IpResolutionSighting[]
 
   @@index([targetDomainId, createdAt(sort: Desc)])
   @@index([status])
@@ -222,6 +228,58 @@ model ScanObservedUrl {
   @@index([scanJobId])
   @@index([scanJobId, hostnameNormalized])
   @@map("scan_observed_url")
+}
+
+model IpResolution {
+  id               String                     @id @default(uuid())
+  targetDomainId   String                     @map("target_domain_id")
+  targetDomain     TargetDomain               @relation(fields: [targetDomainId], references: [id], onDelete: Cascade)
+  ipAddress        String                     @map("ip_address")
+  latestResolvedAt DateTime                   @map("latest_resolved_at")
+  latestSeenBy     String                     @map("latest_seen_by")
+  hostnameCount    Int                        @default(1) @map("hostname_count")
+  createdAt        DateTime                   @default(now()) @map("created_at")
+  updatedAt        DateTime                   @updatedAt @map("updated_at")
+  sightings        IpResolutionSighting[]
+  observedInScans  ScanObservedIpResolution[]
+
+  @@unique([targetDomainId, ipAddress])
+  @@index([targetDomainId, latestResolvedAt(sort: Desc)])
+  @@map("ip_resolution")
+}
+
+model IpResolutionSighting {
+  id                 String       @id @default(uuid())
+  ipResolutionId     String       @map("ip_resolution_id")
+  ipResolution       IpResolution @relation(fields: [ipResolutionId], references: [id], onDelete: Cascade)
+  scanJobId          String?      @map("scan_job_id")
+  scanJob            ScanJob?     @relation(fields: [scanJobId], references: [id], onDelete: SetNull)
+  hostnameNormalized String       @map("hostname_normalized")
+  lastResolvedAt     DateTime     @map("last_resolved_at")
+  createdAt          DateTime     @default(now()) @map("created_at")
+
+  @@unique([ipResolutionId, hostnameNormalized])
+  @@index([ipResolutionId])
+  @@map("ip_resolution_sighting")
+}
+
+model ScanObservedIpResolution {
+  id                 String        @id @default(uuid())
+  scanJobId          String        @map("scan_job_id")
+  scanJob            ScanJob       @relation(fields: [scanJobId], references: [id], onDelete: Cascade)
+  targetDomainId     String        @map("target_domain_id")
+  targetDomain       TargetDomain  @relation(fields: [targetDomainId], references: [id], onDelete: Cascade)
+  ipResolutionId     String?       @map("ip_resolution_id")
+  ipResolution       IpResolution? @relation(fields: [ipResolutionId], references: [id], onDelete: SetNull)
+  ipAddress          String        @map("ip_address")
+  lastResolvedAt     DateTime      @map("last_resolved_at")
+  reportedByHostname String        @map("reported_by_hostname")
+  createdAt          DateTime      @default(now()) @map("created_at")
+
+  @@unique([scanJobId, ipAddress])
+  @@index([targetDomainId])
+  @@index([scanJobId])
+  @@map("scan_observed_ip_resolution")
 }
 
 model ApiKey {

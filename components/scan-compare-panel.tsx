@@ -31,6 +31,13 @@ type UrlDiffItem = {
   } | null;
 };
 
+type IpDiffItem = {
+  id: string;
+  ipAddress: string;
+  lastResolvedAt: Date;
+  reportedByHostname: string;
+};
+
 type CompareDiffData =
   | {
       comparable: false;
@@ -43,8 +50,8 @@ type CompareDiffData =
         removed: number;
         unchanged: number;
       };
-      added: Array<FindingDiffItem | SubdomainDiffItem | UrlDiffItem>;
-      removed: Array<FindingDiffItem | SubdomainDiffItem | UrlDiffItem>;
+      added: Array<FindingDiffItem | SubdomainDiffItem | UrlDiffItem | IpDiffItem>;
+      removed: Array<FindingDiffItem | SubdomainDiffItem | UrlDiffItem | IpDiffItem>;
     };
 
 function formatDateTime(value: Date | null) {
@@ -53,8 +60,8 @@ function formatDateTime(value: Date | null) {
 }
 
 function renderDiffItem(
-  tab: "findings" | "subdomains" | "urls",
-  item: FindingDiffItem | SubdomainDiffItem | UrlDiffItem,
+  tab: "findings" | "subdomains" | "urls" | "ips",
+  item: FindingDiffItem | SubdomainDiffItem | UrlDiffItem | IpDiffItem,
 ) {
   if (tab === "findings") {
     const finding = item as FindingDiffItem;
@@ -79,6 +86,20 @@ function renderDiffItem(
     return (
       <div className="font-mono text-[12px] text-cream">
         {subdomain.hostnameNormalized}
+      </div>
+    );
+  }
+
+  if (tab === "ips") {
+    const ip = item as IpDiffItem;
+    return (
+      <div className="space-y-1">
+        <div className="font-mono text-[12px] font-medium text-cream">
+          {ip.ipAddress}
+        </div>
+        <div className="text-[10px] text-muted">
+          Reported by: <span className="text-cream/90">{ip.reportedByHostname}</span>
+        </div>
       </div>
     );
   }
@@ -116,7 +137,7 @@ export function ScanComparePanel({
   selectedCompareId?: string;
   selectedCompareScan?: CompareOption | null;
   targetLabel: string;
-  tab: "findings" | "subdomains" | "urls";
+  tab: "findings" | "subdomains" | "urls" | "ips";
   perPage: number;
   compareDiff: CompareDiffData | null;
   basePath?: string;

@@ -10,6 +10,7 @@ export type VtDomainReportV2 = {
   subdomains?: string[];
   domain_siblings?: string[];
   undetected_urls?: unknown[];
+  resolutions?: Array<{ ip_address: string; last_resolved: string }>;
 };
 
 export type VtUrlWithDate = { url: string; date: Date | null };
@@ -30,6 +31,23 @@ export function harvestUndetectedUrlsWithDate(report: VtDomainReportV2): VtUrlWi
       out.push({ url: row[0], date });
     } else if (typeof row === "string") {
       out.push({ url: row, date: null });
+    }
+  }
+  return out;
+}
+
+export type VtResolution = { ipAddress: string; lastResolved: Date };
+
+export function harvestResolutions(report: VtDomainReportV2): VtResolution[] {
+  const raw = report.resolutions;
+  if (!Array.isArray(raw)) return [];
+  const out: VtResolution[] = [];
+  for (const entry of raw) {
+    if (typeof entry.ip_address !== "string" || typeof entry.last_resolved !== "string") continue;
+    const dStr = entry.last_resolved.trim().replace(" ", "T") + "Z";
+    const d = new Date(dStr);
+    if (!isNaN(d.getTime())) {
+      out.push({ ipAddress: entry.ip_address, lastResolved: d });
     }
   }
   return out;

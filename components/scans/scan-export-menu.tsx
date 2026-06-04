@@ -45,6 +45,13 @@ export function ScanExportMenu({
       disabledReason: "Unavailable for legacy scans",
     },
     {
+      type: "ips",
+      label: "IP Resolutions",
+      description: "CSV with IP addresses observed in this scan",
+      disabled: availability.ips !== "ready",
+      disabledReason: "Unavailable for legacy scans",
+    },
+    {
       type: "all",
       label: "All (ZIP)",
       description: "ZIP containing every available CSV export",

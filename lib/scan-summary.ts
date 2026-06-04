@@ -1,6 +1,7 @@
 import { ScanJobStatus } from "@prisma/client";
 import {
   loadFindingsCompareDiff,
+  loadIpResolutionsCompareDiff,
   loadSubdomainsCompareDiff,
   loadUrlsCompareDiff,
 } from "@/lib/scan-compare-diff";
@@ -85,7 +86,7 @@ export type SummaryChangeLine = {
   label: string;
   value: string;
   tone: "positive" | "negative" | "neutral";
-  icon: "globe" | "link" | "link-removed" | "finding";
+  icon: "globe" | "link" | "link-removed" | "finding" | "server";
   dividerBefore?: boolean;
 };
 
@@ -382,8 +383,8 @@ export async function loadScanSummary(
   };
 
   if (previousScan) {
-    const baselineAvailability = { findings: "ready" as const, subdomains: availability.subdomains, urls: availability.urls };
-    const [findingsDiff, subdomainsDiff, urlsDiff] = await Promise.all([
+    const baselineAvailability = { findings: "ready" as const, subdomains: availability.subdomains, urls: availability.urls, ips: availability.ips };
+    const [findingsDiff, subdomainsDiff, urlsDiff, ipsDiff] = await Promise.all([
       loadFindingsCompareDiff(previousScan.id, scanId, 500),
       loadSubdomainsCompareDiff(
         previousScan.id,
@@ -393,6 +394,7 @@ export async function loadScanSummary(
         baselineAvailability,
       ),
       loadUrlsCompareDiff(previousScan.id, scanId, 500, availability, baselineAvailability),
+      loadIpResolutionsCompareDiff(previousScan.id, scanId, 500, availability, baselineAvailability),
     ]);
 
     const pushLine = (line: SummaryChangeLine) => changes.lines.push(line);
@@ -441,6 +443,29 @@ export async function loadScanSummary(
         icon: "link-removed",
         dividerBefore: dividerBeforeRemoved && !subdomainsDiff.comparable,
       });
+    }
+
+    if (ipsDiff.comparable) {
+      const added = ipsDiff.summary.added;
+      const removed = ipsDiff.summary.removed;
+      if (added > 0) {
+        pushLine({
+          label: "New IPs",
+          value: `+${added.toLocaleString()}`,
+          tone: "positive",
+          icon: "server",
+          dividerBefore: false,
+        });
+      }
+      if (removed > 0) {
+        pushLine({
+          label: "Removed IPs",
+          value: `-${removed.toLocaleString()}`,
+          tone: "negative",
+          icon: "server",
+          dividerBefore: false, // Could be handled better, but fine for now
+        });
+      }
     }
 
     if (findingsDiff.comparable) {

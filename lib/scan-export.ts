@@ -12,7 +12,7 @@ import {
 
 const BATCH_SIZE = 2000;
 
-export type ScanExportType = "findings" | "subdomains" | "urls" | "all";
+export type ScanExportType = "findings" | "subdomains" | "urls" | "ips" | "all";
 
 function formatIso(value: Date | null | undefined) {
   return value ? value.toISOString() : "";
@@ -179,6 +179,42 @@ async function fetchAllUrls(scanId: string) {
   );
 }
 
+async function fetchAllIps(scanId: string) {
+  const rows: string[][] = [];
+  let skip = 0;
+
+  while (true) {
+    const batch = await prisma.scanObservedIpResolution.findMany({
+      where: { scanJobId: scanId },
+      take: BATCH_SIZE,
+      skip,
+      orderBy: { ipAddress: "asc" },
+      select: {
+        ipAddress: true,
+        lastResolvedAt: true,
+        reportedByHostname: true,
+      },
+    });
+    if (batch.length === 0) break;
+
+    for (const ip of batch) {
+      rows.push([
+        ip.ipAddress,
+        ip.reportedByHostname,
+        formatIso(ip.lastResolvedAt),
+      ]);
+    }
+
+    if (batch.length < BATCH_SIZE) break;
+    skip += BATCH_SIZE;
+  }
+
+  return rowsToCsv(
+    ["ip_address", "reported_by_hostname", "last_resolved_at"],
+    rows,
+  );
+}
+
 export async function loadScanExportContext(scanId: string) {
   const scan = await getObservedScanSummary(scanId);
   if (!scan) return null;
@@ -219,6 +255,16 @@ export async function buildScanExportPayload(
     };
   }
 
+  if (type === "ips") {
+    if (availability.ips !== "ready") {
+      throw new ExportUnavailableError("ips");
+    }
+    return {
+      contentType: "text/csv; charset=utf-8",
+      body: await fetchAllIps(scanId),
+    };
+  }
+
   const { buildStoreZip } = await import("@/lib/zip-store");
   const entries: { name: string; content: string }[] = [
     { name: "findings.csv", content: await fetchAllFindings(scanId) },
@@ -238,6 +284,13 @@ export async function buildScanExportPayload(
     });
   }
 
+  if (availability.ips === "ready") {
+    entries.push({
+      name: "ips.csv",
+      content: await fetchAllIps(scanId),
+    });
+  }
+
   return {
     contentType: "application/zip",
     body: buildStoreZip(entries),
@@ -245,9 +298,9 @@ export async function buildScanExportPayload(
 }
 
 export class ExportUnavailableError extends Error {
-  readonly kind: "subdomains" | "urls";
+  readonly kind: "subdomains" | "urls" | "ips";
 
-  constructor(kind: "subdomains" | "urls") {
+  constructor(kind: "subdomains" | "urls" | "ips") {
     super(`Export for ${kind} is unavailable for this scan`);
     this.name = "ExportUnavailableError";
     this.kind = kind;
@@ -256,8 +309,8 @@ export class ExportUnavailableError extends Error {
 
 export function parseScanExportType(raw: string | null): ScanExportType | null {
   const value = raw?.trim().toLowerCase();
-  if (value === "findings" || value === "subdomains" || value === "urls" || value === "all") {
-    return value;
+  if (value === "findings" || value === "subdomains" || value === "urls" || value === "ips" || value === "all") {
+    return value as ScanExportType;
   }
   return null;
 }

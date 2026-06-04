@@ -9,6 +9,7 @@ import {
   IconArrowUpRight,
   IconGlobe,
   IconLink,
+  IconServer,
 } from "@/components/ui-icons";
 import type { ScanSummaryData, SummaryChangeLine } from "@/lib/scan-summary";
 
@@ -26,6 +27,10 @@ function ChangeIcon({ icon, tone }: { icon: SummaryChangeLine["icon"]; tone: Sum
   const cls = "mr-3 size-4 shrink-0";
   if (icon === "finding") {
     return <IconAlertTriangle className={`${cls} text-purple-500`} />;
+  }
+  if (icon === "server") {
+    if (tone === "negative") return <IconServer className={`${cls} text-red-500`} />;
+    return <IconServer className={`${cls} text-green-600`} />;
   }
   if (tone === "negative") {
     if (icon === "link-removed") {
