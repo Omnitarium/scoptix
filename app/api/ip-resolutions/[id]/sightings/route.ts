@@ -25,11 +25,23 @@ function resolveSummaryFromSightings(
 }
 
 export async function GET(
-  _request: Request,
+  request: Request,
   { params }: { params: Promise<{ id: string }> },
 ) {
   try {
     const { id } = await params;
+    const scanJobId = new URL(request.url).searchParams.get("scanJobId")?.trim() || null;
+
+    if (scanJobId) {
+      const observed = await prisma.scanObservedIpResolution.findFirst({
+        where: { scanJobId, ipResolutionId: id },
+        select: { id: true },
+      });
+      if (!observed) {
+        return NextResponse.json({ error: "Not found" }, { status: 404 });
+      }
+    }
+
     const ipResolution = await prisma.ipResolution.findUnique({
       where: { id },
       select: {
@@ -37,6 +49,7 @@ export async function GET(
         latestResolvedAt: true,
         hostnameCount: true,
         sightings: {
+          where: scanJobId ? { scanJobId } : undefined,
           select: {
             hostnameNormalized: true,
             lastResolvedAt: true,
@@ -54,12 +67,13 @@ export async function GET(
       ipResolution.sightings,
       ipResolution.latestResolvedAt,
     );
-    const observedHostnameCount = Math.max(
-      summary.observedHostnameCount,
-      ipResolution.hostnameCount,
-    );
+    const observedHostnameCount = scanJobId
+      ? summary.observedHostnameCount
+      : Math.max(summary.observedHostnameCount, ipResolution.hostnameCount);
 
     return NextResponse.json({
+      scope: scanJobId ? "scan" : "target",
+      scanJobId,
       ipAddress: ipResolution.ipAddress,
       summary: {
         firstResolvedAt: summary.firstResolvedAt?.toISOString() ?? null,

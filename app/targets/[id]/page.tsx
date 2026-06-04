@@ -19,8 +19,16 @@ import {
   loadExtensionSuffixRules,
   urlCategoryPathnameWhere,
 } from "@/lib/extension-category";
+import { ScanDetailTabs } from "@/components/scans/scan-detail-tabs";
 import { TopBar } from "@/components/top-bar";
 import { TargetIpsTab } from "@/components/targets/target-ips-tab";
+import {
+  IconAlertTriangle,
+  IconClock,
+  IconGlobe,
+  IconLink,
+  IconServer,
+} from "@/components/ui-icons";
 import { parseIpTableSort, targetIpOrderBy } from "@/lib/ip-table-sort";
 
 export const dynamic = "force-dynamic";
@@ -221,19 +229,53 @@ export default async function TargetDetailPage({
         })
       : [];
 
-  const tabs = [
-    { key: "urls", label: "URLs", count: target.cachedUrlCount },
-    { key: "subdomains", label: "Subdomains", count: target.cachedSubdomainCount },
-    { key: "findings", label: "Findings", count: target.cachedFindingCount },
-    { key: "ips", label: "IPs", count: target.cachedIpCount },
-    { key: "scans", label: "Scans", count: undefined },
-  ];
-
   const targetId = target.id;
 
   function tabHref(t: string) {
     return `/targets/${targetId}?tab=${t}`;
   }
+
+  function targetTabCount(count: number) {
+    return count.toLocaleString();
+  }
+
+  const targetDetailTabs = [
+    {
+      key: "urls",
+      label: "URLs",
+      icon: IconLink,
+      href: tabHref("urls"),
+      count: targetTabCount(target.cachedUrlCount),
+    },
+    {
+      key: "subdomains",
+      label: "Subdomains",
+      icon: IconGlobe,
+      href: tabHref("subdomains"),
+      count: targetTabCount(target.cachedSubdomainCount),
+    },
+    {
+      key: "findings",
+      label: "Findings",
+      icon: IconAlertTriangle,
+      href: tabHref("findings"),
+      count: targetTabCount(target.cachedFindingCount),
+    },
+    {
+      key: "ips",
+      label: "IPs",
+      icon: IconServer,
+      href: tabHref("ips"),
+      count: targetTabCount(target.cachedIpCount),
+    },
+    {
+      key: "scans",
+      label: "Scans",
+      icon: IconClock,
+      href: tabHref("scans"),
+      count: null,
+    },
+  ];
 
   const targetBasePath = `/targets/${targetId}`;
 
@@ -304,29 +346,11 @@ export default async function TargetDetailPage({
           </div>
         </div>
 
-        {/* ── Tab Strip ── */}
-        <div className="mt-6 flex flex-wrap gap-2">
-          {tabs.map((t) => (
-            <Link
-              key={t.key}
-              href={tabHref(t.key)}
-              className={[
-                "rounded-xl px-4 py-2.5 text-[13px] font-medium transition-colors",
-                tab === t.key
-                  ? "bg-accent/15 text-cream shadow-glass ring-1 ring-accent/25"
-                  : "text-muted hover:bg-[var(--nav-hover-bg)] hover:text-cream",
-              ].join(" ")}
-            >
-              {t.label}
-              {t.count != null && (
-                <span className="ml-1.5 font-mono text-[11px] text-muted">{t.count.toLocaleString()}</span>
-              )}
-            </Link>
-          ))}
+        <div className="mt-6">
+          <ScanDetailTabs tabs={targetDetailTabs} activeKey={tab} />
         </div>
 
-        {/* ── Tab Content ── */}
-        <div className="mt-6">
+        <div>
           {/* ════════ URLs Tab ════════ */}
           {tab === "urls" && (
             <div className="glass-panel overflow-hidden rounded-2xl">

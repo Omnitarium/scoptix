@@ -14,6 +14,8 @@ const PANEL_SIGHTINGS_PER_PAGE = 7;
 
 export type IpSightingPanelProps = {
   ipResolutionId: string;
+  /** Limits sightings to this scan when set (observed scan context). */
+  scanJobId?: string | null;
   onClose: () => void;
 };
 
@@ -23,6 +25,7 @@ type SightingData = {
 };
 
 type PanelData = {
+  scope?: "scan" | "target";
   ipAddress: string;
   summary: {
     firstResolvedAt: string | null;
@@ -224,7 +227,13 @@ function IpSightingAssociationTimeline({
   );
 }
 
-export function IpSightingPanel({ ipResolutionId, onClose }: IpSightingPanelProps) {
+function sightingsFetchUrl(ipResolutionId: string, scanJobId: string | null | undefined) {
+  const base = `/api/ip-resolutions/${ipResolutionId}/sightings`;
+  if (!scanJobId) return base;
+  return `${base}?scanJobId=${encodeURIComponent(scanJobId)}`;
+}
+
+export function IpSightingPanel({ ipResolutionId, scanJobId, onClose }: IpSightingPanelProps) {
   const [mounted, setMounted] = useState(false);
   const [data, setData] = useState<PanelData | null>(null);
   const [loading, setLoading] = useState(false);
@@ -238,7 +247,7 @@ export function IpSightingPanel({ ipResolutionId, onClose }: IpSightingPanelProp
 
   useEffect(() => {
     setPage(1);
-  }, [ipResolutionId]);
+  }, [ipResolutionId, scanJobId]);
 
   useEffect(() => {
     function onKeyDown(e: KeyboardEvent) {
@@ -253,7 +262,7 @@ export function IpSightingPanel({ ipResolutionId, onClose }: IpSightingPanelProp
     setLoading(true);
     setError(null);
 
-    fetch(`/api/ip-resolutions/${ipResolutionId}/sightings`)
+    fetch(sightingsFetchUrl(ipResolutionId, scanJobId))
       .then((res) => {
         if (!res.ok) throw new Error("Failed to fetch sightings");
         return res.json();
@@ -274,7 +283,7 @@ export function IpSightingPanel({ ipResolutionId, onClose }: IpSightingPanelProp
     return () => {
       ignore = true;
     };
-  }, [ipResolutionId]);
+  }, [ipResolutionId, scanJobId]);
 
   const sightings = data?.sightings ?? [];
   const totalPages = Math.max(1, Math.ceil(sightings.length / PANEL_SIGHTINGS_PER_PAGE));
@@ -355,6 +364,16 @@ export function IpSightingPanel({ ipResolutionId, onClose }: IpSightingPanelProp
             </div>
           ) : data ? (
             <>
+              {data.scope === "scan" ? (
+                <div className="mb-4 flex items-start gap-3 rounded-lg border border-line bg-white/[0.03] px-4 py-3 text-[12px] leading-relaxed text-muted">
+                  <IconInfo className="mt-0.5 size-4 shrink-0 text-muted" />
+                  <p>
+                    Hostnames and timeline below are limited to this scan. Open the target IP
+                    directory for the full history across all scans.
+                  </p>
+                </div>
+              ) : null}
+
               <div className="mb-6 flex items-start gap-3 rounded-lg border border-blue-500/25 bg-blue-500/10 px-4 py-3 text-[12px] leading-relaxed text-cream">
                 <IconInfo className="mt-0.5 size-4 shrink-0 text-blue-500" />
                 <p>{vtPassiveDnsIpBanner(hostnameCount)}</p>

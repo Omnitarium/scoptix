@@ -15,6 +15,7 @@ export type ScanIpRow = IpDirectoryRowData & {
 
 export function ScanIpsTab({
   ips,
+  scanJobId,
   totalItems,
   currentPage,
   totalPages,
@@ -24,6 +25,7 @@ export function ScanIpsTab({
   sort,
 }: {
   ips: ScanIpRow[];
+  scanJobId: string;
   totalItems: number;
   currentPage: number;
   totalPages: number;
@@ -61,7 +63,9 @@ export function ScanIpsTab({
               <IpDirectoryTableRow
                 key={ip.id}
                 row={ip}
-                onSelect={() => ip.ipResolutionId && openIpPanel(ip.ipResolutionId)}
+                onSelect={() =>
+                  ip.ipResolutionId && openIpPanel(ip.ipResolutionId, { scanJobId })
+                }
               />
             ))
           )}

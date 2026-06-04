@@ -694,6 +694,7 @@ export default async function ScanObservedPage({
         scanIdShort={shortScanId(id)}
         duration={formatScanDuration(scan.startedAt, scan.completedAt)}
         compareHref={tabHref("compare")}
+        targetHref={`/targets/${scan.targetDomainId}?tab=ips`}
         scanId={id}
         exportAvailability={availability}
       />
@@ -1170,6 +1171,7 @@ export default async function ScanObservedPage({
           {tab === "ips" && (
             <ScanIpsTab
               ips={scanIpRows}
+              scanJobId={id}
               totalItems={ipsTotal}
               currentPage={safeIpsPage}
               totalPages={ipsPages}

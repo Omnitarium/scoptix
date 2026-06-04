@@ -12,9 +12,14 @@ import {
 import { usePathname } from "next/navigation";
 import { IpSightingPanel } from "@/components/ip-sighting-panel";
 
+export type OpenIpPanelOptions = {
+  /** When set, panel sightings are limited to this observed scan. */
+  scanJobId?: string;
+};
+
 type IpSightingPanelContextValue = {
   ipResolutionId: string | null;
-  openIpPanel: (id: string) => void;
+  openIpPanel: (id: string, options?: OpenIpPanelOptions) => void;
   closeIpPanel: () => void;
 };
 
@@ -23,14 +28,21 @@ const IpSightingPanelContext = createContext<IpSightingPanelContextValue | null>
 export function IpSightingPanelProvider({ children }: { children: ReactNode }) {
   const pathname = usePathname();
   const [ipResolutionId, setIpResolutionId] = useState<string | null>(null);
+  const [scanJobId, setScanJobId] = useState<string | null>(null);
 
-  const closeIpPanel = useCallback(() => setIpResolutionId(null), []);
-  const openIpPanel = useCallback((id: string) => {
-    if (id) setIpResolutionId(id);
+  const closeIpPanel = useCallback(() => {
+    setIpResolutionId(null);
+    setScanJobId(null);
+  }, []);
+  const openIpPanel = useCallback((id: string, options?: OpenIpPanelOptions) => {
+    if (!id) return;
+    setIpResolutionId(id);
+    setScanJobId(options?.scanJobId?.trim() || null);
   }, []);
 
   useEffect(() => {
     setIpResolutionId(null);
+    setScanJobId(null);
   }, [pathname]);
 
   const value = useMemo(
@@ -42,7 +54,11 @@ export function IpSightingPanelProvider({ children }: { children: ReactNode }) {
     <IpSightingPanelContext.Provider value={value}>
       {children}
       {ipResolutionId ? (
-        <IpSightingPanel ipResolutionId={ipResolutionId} onClose={closeIpPanel} />
+        <IpSightingPanel
+          ipResolutionId={ipResolutionId}
+          scanJobId={scanJobId}
+          onClose={closeIpPanel}
+        />
       ) : null}
     </IpSightingPanelContext.Provider>
   );

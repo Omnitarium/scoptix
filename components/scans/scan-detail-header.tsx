@@ -4,6 +4,7 @@ import { TopBarControls } from "@/components/top-bar-controls";
 import {
   IconArrowUpRight,
   IconCheckCircle,
+  IconGlobe,
 } from "@/components/ui-icons";
 import type { ObservedAvailability } from "@/lib/scan-observed";
 
@@ -15,6 +16,7 @@ type ScanDetailHeaderProps = {
   scanIdShort: string;
   duration: string;
   compareHref: string;
+  targetHref: string;
   scanId: string;
   exportAvailability: ObservedAvailability;
 };
@@ -29,6 +31,7 @@ export function ScanDetailHeader({
   scanIdShort,
   duration,
   compareHref,
+  targetHref,
   scanId,
   exportAvailability,
 }: ScanDetailHeaderProps) {
@@ -81,6 +84,14 @@ export function ScanDetailHeader({
             >
               <IconArrowUpRight className="mr-1.5 size-3.5 rotate-45" />
               Compare
+            </Link>
+            <Link
+              href={targetHref}
+              className="inline-flex items-center rounded-lg border border-line px-3 py-1.5 text-[12px] font-medium text-cream transition hover:bg-[var(--nav-hover-bg)]"
+              title="View this target across all scans — IPs, URLs, and findings are aggregated globally, not limited to this scan."
+            >
+              <IconGlobe className="mr-1.5 size-3.5 text-muted" />
+              Global Target
             </Link>
             <ScanExportMenu scanId={scanId} availability={exportAvailability} />
           </div>
