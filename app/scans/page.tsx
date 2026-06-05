@@ -1,11 +1,10 @@
 import { ScanJobStatus } from "@prisma/client";
 import { ActiveScansPanel } from "@/components/active-scans-panel";
 import { NewScanDialog } from "@/components/new-scan-dialog";
-import { PageHeader } from "@/components/page-header";
 import { ScanHistoryPanel } from "@/components/scans/scan-history-panel";
+import { ScansListHeader } from "@/components/scans/scans-list-header";
 import { prisma } from "@/lib/prisma";
 import { countScanObservedFromDb } from "@/lib/scan-observed-counts";
-import { TopBar } from "@/components/top-bar";
 import { formatScanDateTime } from "@/lib/scan-format";
 
 export const dynamic = "force-dynamic";
@@ -74,21 +73,11 @@ export default async function ScansPage() {
   });
 
   return (
-    <>
-      <TopBar breadcrumb="/ scans" />
-      <main className="min-h-0 flex-1 overflow-y-auto px-6 py-8">
-        <div className="flex flex-col gap-4 sm:flex-row sm:items-start sm:justify-between">
-          <PageHeader
-            eyebrow="Reconnaissance"
-            title="Scans"
-            description="Track running scans and review previous results."
-          />
-          <div className="shrink-0">
-            <NewScanDialog />
-          </div>
-        </div>
+    <div className="flex min-h-0 flex-1 flex-col overflow-hidden">
+      <ScansListHeader activeCount={activeScans.length} historyCount={historyScans.length} />
 
-        <div className="mt-8 space-y-6">
+      <div className="min-h-0 flex-1 overflow-y-auto px-6 py-5">
+        <div className="space-y-6">
           {activeScans.length > 0 && (
             <ActiveScansPanel
               scans={activeScans.map((scan) => ({
@@ -134,7 +123,7 @@ export default async function ScansPage() {
             )}
           </div>
         </div>
-      </main>
-    </>
+      </div>
+    </div>
   );
 }

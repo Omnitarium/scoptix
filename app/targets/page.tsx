@@ -1,9 +1,8 @@
 import Link from "next/link";
 import { NewScanDialog } from "@/components/new-scan-dialog";
-import { PageHeader } from "@/components/page-header";
+import { TargetsListHeader } from "@/components/targets/targets-list-header";
 import { formatScanDateTime } from "@/lib/scan-format";
 import { prisma } from "@/lib/prisma";
-import { TopBar } from "@/components/top-bar";
 
 export const dynamic = "force-dynamic";
 
@@ -158,27 +157,16 @@ export default async function TargetsPage() {
   }));
 
   return (
-    <>
-      <TopBar breadcrumb="/ targets" />
-      <main className="min-h-0 flex-1 overflow-y-auto px-6 py-8">
-        <div className="flex flex-col gap-4 sm:flex-row sm:items-start sm:justify-between">
-          <PageHeader
-            eyebrow="Collection"
-            title="Targets"
-            description="Global inventory per domain—subdomains, URLs, findings, and IPs aggregated across all scans."
-          />
-          <div className="shrink-0">
-            <NewScanDialog />
-          </div>
-        </div>
+    <div className="flex min-h-0 flex-1 flex-col overflow-hidden">
+      <TargetsListHeader targetCount={targets.length} />
 
-        <div className="mt-8">
+      <div className="min-h-0 flex-1 overflow-y-auto px-6 py-5">
+        <div>
           <div className="glass-panel overflow-hidden rounded-2xl">
             <div className="border-b border-line bg-[var(--table-header-bg)] px-5 py-4">
               <div className="text-[13px] font-semibold text-cream">Target inventory</div>
               <div className="mt-1 text-[12px] text-muted">
-                {targets.length.toLocaleString()} target{targets.length !== 1 ? "s" : ""} · Click a row to
-                view results
+                Review domains with subdomains, URLs, findings, and IPs aggregated across all scans.
               </div>
             </div>
 
@@ -211,7 +199,7 @@ export default async function TargetsPage() {
             )}
           </div>
         </div>
-      </main>
-    </>
+      </div>
+    </div>
   );
 }
