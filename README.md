@@ -4,6 +4,8 @@ SCOPTIX is a passive reconnaissance and attack surface exploration tool that hel
 
 Data is currently sourced from **VirusTotal** and the Internet Archive's **Wayback Machine**.
 
+![Dashboard — target overview and scan history](./img/1-dashboard.png)
+
 -----
 
 ## Key Features
@@ -13,6 +15,12 @@ Data is currently sourced from **VirusTotal** and the Internet Archive's **Wayba
 * **Content Analysis:** Automatically discover potentially sensitive files, including documents, archives, binaries, backups, and other analyst-defined categories.
 * **Endpoint Discovery:** Explore parameters, application endpoints, authentication-related resources, and other security-relevant application assets.
 * **Scan Comparison:** Track changes across scans and quickly identify newly discovered subdomains, URLs, IP addresses, archived assets, and exposure findings.
+
+![Scan summary — compare results across scans](./img/2-scan-summary.png)
+
+![Historical hostnames — passive DNS timeline per IP](./img/3-historicalhostnames.png)
+
+![All findings — exposure and content analysis results](./img/4-all-findings.png)
 
 -----
 
