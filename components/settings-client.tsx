@@ -5,6 +5,7 @@ import { useSearchParams } from "next/navigation";
 import { useEffect, useMemo, useState } from "react";
 import { apiUrl } from "@/lib/api-url";
 import { CategoryIconPicker } from "@/components/category-icon-picker";
+import { SettingsCveCard } from "@/components/settings-cve-card";
 import { IconPencil, IconTrash } from "@/components/nav-icons";
 import {
   DEFAULT_CATEGORY_ICON_KEY,
@@ -52,6 +53,11 @@ const SCAN_ENGINE_OPTIONS = [
     id: "WAPPALYZER",
     label: "Wappalyzer",
     description: "Technology fingerprinting (CMS, frameworks, servers) per subdomain.",
+  },
+  {
+    id: "CVE_MATCH",
+    label: "CVE Match",
+    description: "Correlate fingerprinted technologies against the stored CVE database. Requires CVE data fetched below.",
   },
 ] as const;
 
@@ -521,6 +527,8 @@ export function SettingsClient({
               </p>
             ) : null}
           </div>
+
+          <SettingsCveCard />
 
           <div className="glass-panel rounded-2xl p-6 lg:col-span-5">
             <div className="text-[10px] font-semibold uppercase tracking-[0.25em] text-accent">Global proxy</div>

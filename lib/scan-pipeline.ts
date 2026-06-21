@@ -844,6 +844,60 @@ export async function runScanJob(prisma: PrismaClient, redis: Redis, scanJobId: 
 
   await checkCancelled(prisma, scanJobId);
 
+  /* ════════════════════════════════════════════
+   * Phase T5C: CVE matching (subdomain technologies × stored CVEs)
+   * ════════════════════════════════════════════ */
+  if (engines.includes(EngineProvider.CVE_MATCH)) {
+    const cveCount = await prisma.cve.count();
+    if (cveCount > 0) {
+      const { matchTechToCves } = await import("@/lib/cve-match");
+
+      const techRows = await prisma.subdomainTechnology.findMany({
+        where: { subdomain: { targetDomainId: target.id } },
+        select: { id: true, name: true, version: true, cpe: true },
+      });
+
+      await prisma.scanJob.update({
+        where: { id: scanJobId },
+        data: { phase: ScanPhase.T5C_CVE_MATCH, progressCurrent: 0, progressTotal: techRows.length },
+      });
+
+      let cveIdx = 0;
+      for (const tech of techRows) {
+        cveIdx += 1;
+        if (cveIdx % 25 === 0) await checkCancelled(prisma, scanJobId);
+
+        const hits = await matchTechToCves(prisma, tech);
+        for (const hit of hits) {
+          await prisma.subdomainTechnologyCve.upsert({
+            where: {
+              subdomainTechnologyId_cveId: {
+                subdomainTechnologyId: tech.id,
+                cveId: hit.cveId,
+              },
+            },
+            create: {
+              subdomainTechnologyId: tech.id,
+              cveId: hit.cveId,
+              scanJobId,
+              matchedVersion: hit.matchedVersion,
+            },
+            update: { scanJobId, matchedVersion: hit.matchedVersion },
+          });
+        }
+
+        if (shouldUpdateProgress(cveIdx, techRows.length, 2)) {
+          await prisma.scanJob.update({
+            where: { id: scanJobId },
+            data: { progressCurrent: cveIdx, progressTotal: techRows.length },
+          });
+        }
+      }
+    }
+  }
+
+  await checkCancelled(prisma, scanJobId);
+
   const finalCheck = await prisma.scanJob.findUnique({ where: { id: scanJobId }, select: { status: true } });
   if (finalCheck?.status !== ScanJobStatus.CANCELLED) {
     await syncTargetCachedFindingCount(prisma, target.id);

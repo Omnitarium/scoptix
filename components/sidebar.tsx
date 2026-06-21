@@ -14,6 +14,7 @@ import {
   IconCheckCircle,
   IconLayoutDashboard,
   IconSettings,
+  IconShield,
 } from "@/components/ui-icons";
 
 type NavIcon = ComponentType<{ className?: string }>;
@@ -105,6 +106,17 @@ export function Sidebar({ categories }: { categories: SidebarExtensionCategory[]
           label: "All Findings",
           icon: IconAlertTriangle,
           match: (p, sp) => p.startsWith("/findings") && !sp.get("urlCategory"),
+        },
+      ],
+    },
+    {
+      title: "Intelligence",
+      items: [
+        {
+          href: "/intel/cve",
+          label: "CVE Database",
+          icon: IconShield,
+          match: (p: string) => p.startsWith("/intel/cve"),
         },
       ],
     },

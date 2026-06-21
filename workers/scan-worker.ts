@@ -5,8 +5,9 @@ import Redis from "ioredis";
 import { ScanJobStatus } from "@prisma/client";
 import { prisma } from "../lib/prisma";
 import { runScanJob } from "../lib/scan-pipeline";
-import { SCAN_QUEUE_NAME } from "../lib/queue";
+import { SCAN_QUEUE_NAME, CVE_FETCH_QUEUE_NAME } from "../lib/queue";
 import { resolveAppEncryptionKey } from "../lib/app-encryption";
+import { runCveFetch } from "../lib/cve-fetch";
 
 const url = process.env.REDIS_URL ?? "redis://127.0.0.1:6379";
 
@@ -55,6 +56,33 @@ async function main() {
   });
 
   console.info(`[worker] listening on ${SCAN_QUEUE_NAME} (concurrency=1)`);
+
+  // CVE fetch worker (NVD ingestion) — separate queue, concurrency 1.
+  const cveWorker = new Worker(
+    CVE_FETCH_QUEUE_NAME,
+    async (job) => {
+      const { apiKey, startDate, proxyUrl } = job.data as {
+        apiKey?: string | null;
+        startDate: string;
+        proxyUrl?: string | null;
+      };
+      await runCveFetch(prisma, {
+        apiKey: apiKey ?? null,
+        startDate: new Date(startDate),
+        proxyUrl: proxyUrl ?? null,
+      });
+    },
+    { connection: bullConnection, concurrency: 1 },
+  );
+
+  cveWorker.on("failed", (job, err) => {
+    console.error(`[worker] cve-fetch job ${job?.id} failed:`, err);
+  });
+  cveWorker.on("completed", (job) => {
+    console.info(`[worker] cve-fetch completed job ${job.id}`);
+  });
+
+  console.info(`[worker] listening on ${CVE_FETCH_QUEUE_NAME} (concurrency=1)`);
 }
 
 main().catch((e) => {
