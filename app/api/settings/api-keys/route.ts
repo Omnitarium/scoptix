@@ -19,7 +19,12 @@ function mask(s: string) {
 }
 
 export async function GET() {
-  const keys = await prisma.apiKey.findMany({ orderBy: { createdAt: "asc" } });
+  // NVD (CVE_MATCH) credentials are managed in the dedicated CVE settings card,
+  // so this VirusTotal-oriented list excludes them.
+  const keys = await prisma.apiKey.findMany({
+    where: { provider: EngineProvider.VIRUSTOTAL },
+    orderBy: { createdAt: "asc" },
+  });
   return NextResponse.json({
     keys: keys.map((k) => {
       const usage = resolveUsageCounters(k);

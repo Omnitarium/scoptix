@@ -30,6 +30,15 @@ export async function GET(
         website: true,
         cpe: true,
         lastSeenAt: true,
+        cveMatches: {
+          select: {
+            cveId: true,
+            matchedVersion: true,
+            cve: { select: { cvssSeverity: true, cvssScore: true } },
+          },
+          orderBy: { cve: { cvssScore: "desc" } },
+          take: 100,
+        },
       },
     });
 
@@ -46,6 +55,11 @@ export async function GET(
         website: t.website,
         cpe: t.cpe,
         lastSeenAt: t.lastSeenAt.toISOString(),
+        cves: t.cveMatches.map((m) => ({
+          cveId: m.cveId,
+          severity: m.cve.cvssSeverity,
+          score: m.cve.cvssScore,
+        })),
       })),
     });
   } catch (error) {

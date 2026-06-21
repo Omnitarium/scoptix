@@ -4,6 +4,7 @@ import { AppShellChrome } from "@/components/app-shell-chrome";
 import { IpSightingPanelProvider } from "@/components/ip-sighting-panel-provider";
 import { HostnameSightingPanelProvider } from "@/components/hostname-sighting-panel-provider";
 import { TechHostsPanelProvider } from "@/components/scans/tech-hosts-panel-provider";
+import { CveHostsPanelProvider } from "@/components/scans/cve-hosts-panel-provider";
 import { loadSidebarExtensionCategories } from "@/lib/extension-category";
 import { prisma } from "@/lib/prisma";
 
@@ -14,6 +15,7 @@ export async function AppShell({ children }: { children: React.ReactNode }) {
     <IpSightingPanelProvider>
       <HostnameSightingPanelProvider>
         <TechHostsPanelProvider>
+        <CveHostsPanelProvider>
         <div className="relative min-h-screen">
           <AppShellChrome />
 
@@ -26,6 +28,7 @@ export async function AppShell({ children }: { children: React.ReactNode }) {
             </div>
           </div>
         </div>
+        </CveHostsPanelProvider>
         </TechHostsPanelProvider>
       </HostnameSightingPanelProvider>
     </IpSightingPanelProvider>

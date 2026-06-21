@@ -12,6 +12,7 @@ enum EngineProvider {
   WAYBACK_MACHINE
   URLSCAN
   WAPPALYZER
+  CVE_MATCH
 }
 
 enum ScanJobStatus {
@@ -30,7 +31,15 @@ enum ScanPhase {
   T4_WAYBACK_SUBDOMAINS
   T5_CONSOLIDATE
   T5B_WAPPALYZER
+  T5C_CVE_MATCH
   T6_ANALYSIS
+}
+
+enum CveFetchStatus {
+  IDLE
+  RUNNING
+  COMPLETED
+  FAILED
 }
 
 enum DeepScanState {
@@ -102,6 +111,7 @@ model SubdomainTechnology {
   cpe         String?
   firstSeenAt DateTime  @default(now()) @map("first_seen_at")
   lastSeenAt  DateTime  @updatedAt @map("last_seen_at")
+  cveMatches  SubdomainTechnologyCve[]
 
   @@unique([subdomainId, name])
   @@index([subdomainId])
@@ -335,4 +345,57 @@ model AppSetting {
   updatedAt DateTime @updatedAt @map("updated_at")
 
   @@map("app_setting")
+}
+
+model Cve {
+  id            String   @id // CVE-ID, e.g. CVE-2024-1234
+  published     DateTime
+  lastModified  DateTime @map("last_modified")
+  cvssScore     Float?   @map("cvss_score")
+  cvssSeverity  String?  @map("cvss_severity") // CRITICAL | HIGH | MEDIUM | LOW | NONE
+  cvssVector    String?  @map("cvss_vector")
+  description   String
+  // Flattened CPE products for fast matching: ["vendor:product", ...]
+  cpeProducts   String[] @map("cpe_products")
+  // Raw NVD configurations node for precise version-range matching.
+  cpeConfigs    Json     @map("cpe_configs")
+  references    String[]
+  createdAt     DateTime @default(now()) @map("created_at")
+  matches       SubdomainTechnologyCve[]
+
+  @@index([published(sort: Desc)])
+  @@index([cvssSeverity])
+  @@index([cvssScore])
+  @@map("cve")
+}
+
+model CveFetchState {
+  id            String         @id @default("singleton")
+  status        CveFetchStatus @default(IDLE)
+  // Most recent lastModified date covered by stored data (NVD incremental cursor).
+  coveredUntil  DateTime?      @map("covered_until")
+  lastFetchedAt DateTime?      @map("last_fetched_at")
+  totalStored   Int            @default(0) @map("total_stored")
+  progressCurrent Int          @default(0) @map("progress_current")
+  progressTotal   Int          @default(0) @map("progress_total")
+  errorMessage  String?        @map("error_message")
+  updatedAt     DateTime       @updatedAt @map("updated_at")
+
+  @@map("cve_fetch_state")
+}
+
+model SubdomainTechnologyCve {
+  id                    String              @id @default(uuid())
+  subdomainTechnologyId String              @map("subdomain_technology_id")
+  subdomainTechnology   SubdomainTechnology @relation(fields: [subdomainTechnologyId], references: [id], onDelete: Cascade)
+  cveId                 String              @map("cve_id")
+  cve                   Cve                 @relation(fields: [cveId], references: [id], onDelete: Cascade)
+  scanJobId             String?             @map("scan_job_id")
+  matchedVersion        String?             @map("matched_version")
+  createdAt             DateTime            @default(now()) @map("created_at")
+
+  @@unique([subdomainTechnologyId, cveId])
+  @@index([cveId])
+  @@index([scanJobId])
+  @@map("subdomain_technology_cve")
 }

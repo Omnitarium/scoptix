@@ -10,6 +10,7 @@ import {
   IconGlobe,
   IconLink,
   IconServer,
+  IconShield,
   IconTerminal,
 } from "@/components/ui-icons";
 import { ScanComparePanel } from "@/components/scan-compare-panel";
@@ -20,6 +21,7 @@ import { ScanMetricCards } from "@/components/scans/scan-metric-cards";
 import { ScanSummaryTab } from "@/components/scans/scan-summary-tab";
 import { ScanIpsTab } from "@/components/scans/scan-ips-tab";
 import { ScanTechTab, type ScanTechRow } from "@/components/scans/scan-tech-tab";
+import { ScanCveTab, type ScanCveRow } from "@/components/scans/scan-cve-tab";
 import { SubdomainSearchBar } from "@/components/subdomain-search-bar";
 import { ObservedSubdomainRow } from "@/components/scans/observed-subdomain-row";
 import { UrlFiltersToolbar } from "@/components/url-filters-toolbar";
@@ -142,6 +144,7 @@ export default async function ScanObservedPage({
     tabRaw === "urls" ||
     tabRaw === "ips" ||
     tabRaw === "tech" ||
+    tabRaw === "cves" ||
     tabRaw === "findings" ||
     tabRaw === "compare"
       ? tabRaw
@@ -236,6 +239,14 @@ export default async function ScanObservedPage({
     select: { name: true },
   });
   const observedTechCount = techDistinct.length;
+
+  // Always compute the matched-CVE count so the tab badge shows before activation.
+  const cveDistinct = await prisma.subdomainTechnologyCve.findMany({
+    where: { subdomainTechnology: { scanJobId: id } },
+    distinct: ["cveId"],
+    select: { cveId: true },
+  });
+  const observedCveCount = cveDistinct.length;
 
   const urlCategoryCounts =
     availability.urls === "ready"
@@ -728,6 +739,99 @@ export default async function ScanObservedPage({
     safeTechPage * perPage,
   );
 
+  /* ── Matched CVEs ── */
+  // Group SubdomainTechnologyCve rows (matched in this scan) by CVE.
+  const cveRecords =
+    tab === "cves"
+      ? await prisma.subdomainTechnologyCve.findMany({
+          where: { subdomainTechnology: { scanJobId: id } },
+          select: {
+            cveId: true,
+            matchedVersion: true,
+            cve: {
+              select: {
+                published: true,
+                description: true,
+                cvssSeverity: true,
+                cvssScore: true,
+              },
+            },
+            subdomainTechnology: {
+              select: {
+                name: true,
+                subdomain: { select: { hostnameNormalized: true } },
+              },
+            },
+          },
+        })
+      : [];
+
+  const cveGrouped: ScanCveRow[] = (() => {
+    if (tab !== "cves") return [];
+    const map = new Map<
+      string,
+      {
+        cveId: string;
+        severity: string | null;
+        score: number | null;
+        published: string;
+        description: string;
+        hosts: Map<string, { technology: string; matchedVersion: string | null }>;
+      }
+    >();
+    for (const r of cveRecords) {
+      const host = r.subdomainTechnology.subdomain?.hostnameNormalized;
+      if (!host) continue;
+      let g = map.get(r.cveId);
+      if (!g) {
+        g = {
+          cveId: r.cveId,
+          severity: r.cve.cvssSeverity,
+          score: r.cve.cvssScore,
+          published: r.cve.published.toISOString(),
+          description: r.cve.description,
+          hosts: new Map(),
+        };
+        map.set(r.cveId, g);
+      }
+      // Key by host+technology so a host can appear once per matching tech.
+      const key = `${host}::${r.subdomainTechnology.name}`;
+      if (!g.hosts.has(key)) {
+        g.hosts.set(key, {
+          technology: r.subdomainTechnology.name,
+          matchedVersion: r.matchedVersion,
+        });
+      }
+    }
+    return Array.from(map.values())
+      .map((g) => ({
+        cveId: g.cveId,
+        severity: g.severity,
+        score: g.score,
+        published: g.published,
+        description: g.description,
+        hosts: Array.from(g.hosts.entries())
+          .map(([key, v]) => ({
+            hostnameNormalized: key.split("::")[0],
+            technology: v.technology,
+            matchedVersion: v.matchedVersion,
+          }))
+          .sort((a, b) => a.hostnameNormalized.localeCompare(b.hostnameNormalized)),
+        hostCount: g.hosts.size,
+      }))
+      .sort(
+        (a, b) =>
+          (b.score ?? 0) - (a.score ?? 0) ||
+          b.hostCount - a.hostCount ||
+          a.cveId.localeCompare(b.cveId),
+      );
+  })();
+
+  const cveTotal = cveGrouped.length;
+  const cvePages = Math.max(1, Math.ceil(cveTotal / perPage));
+  const safeCvePage = Math.min(page, cvePages);
+  const cveRows = cveGrouped.slice((safeCvePage - 1) * perPage, safeCvePage * perPage);
+
   function tabHref(nextTab: string) {
     const q = new URLSearchParams();
     q.set("tab", nextTab);
@@ -774,6 +878,13 @@ export default async function ScanObservedPage({
       icon: IconTerminal,
       href: tabHref("tech"),
       count: countLabel(observedTechCount),
+    },
+    {
+      key: "cves",
+      label: "CVEs",
+      icon: IconShield,
+      href: tabHref("cves"),
+      count: countLabel(observedCveCount),
     },
     {
       key: "findings",
@@ -1380,6 +1491,18 @@ export default async function ScanObservedPage({
               totalItems={techTotal}
               currentPage={safeTechPage}
               totalPages={techPages}
+              perPage={perPage}
+              basePath={basePath}
+              isCompleted={isCompleted}
+            />
+          )}
+
+          {tab === "cves" && (
+            <ScanCveTab
+              cves={cveRows}
+              totalItems={cveTotal}
+              currentPage={safeCvePage}
+              totalPages={cvePages}
               perPage={perPage}
               basePath={basePath}
               isCompleted={isCompleted}

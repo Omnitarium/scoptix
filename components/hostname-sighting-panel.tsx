@@ -5,6 +5,7 @@ import { createPortal } from "react-dom";
 import Link from "next/link";
 import { apiUrl } from "@/lib/api-url";
 import { TechIcon } from "@/components/scans/tech-icon";
+import { severityBadgeClass } from "@/lib/cve-format";
 import { IconArrowUpRight, IconChevronDown, IconCopy, IconInfo, IconX } from "@/components/ui-icons";
 import {
   formatPassiveDnsPanelDateTime,
@@ -48,6 +49,7 @@ type TechnologyItem = {
   website: string | null;
   cpe: string | null;
   lastSeenAt: string;
+  cves?: Array<{ cveId: string; severity: string | null; score: number | null }>;
 };
 
 type TechnologiesData = {
@@ -339,7 +341,11 @@ function SubdomainTechnologiesSection({
               >
                 <TechIcon name={t.name} iconName={t.iconName} size={14} />
                 <span className="truncate">{label}</span>
-                {cats ? (
+                {t.cves && t.cves.length > 0 ? (
+                  <span className="shrink-0 rounded bg-warn/20 px-1 text-[9px] font-bold text-warn">
+                    {t.cves.length} CVE
+                  </span>
+                ) : cats ? (
                   <span className="max-w-[120px] truncate text-[9px] font-medium uppercase tracking-wide text-muted">
                     {t.categories[0]}
                   </span>
@@ -375,6 +381,65 @@ function SubdomainTechnologiesSection({
           ) : null}
         </div>
       )}
+
+      <SubdomainCvesList techs={techs} />
+    </div>
+  );
+}
+
+function SubdomainCvesList({ techs }: { techs: TechnologyItem[] }) {
+  // Aggregate unique CVEs across this host's technologies.
+  const map = new Map<string, { cveId: string; severity: string | null; score: number | null }>();
+  for (const t of techs) {
+    for (const c of t.cves ?? []) {
+      if (!map.has(c.cveId)) map.set(c.cveId, c);
+    }
+  }
+  const cves = Array.from(map.values()).sort((a, b) => (b.score ?? 0) - (a.score ?? 0));
+  if (cves.length === 0) return null;
+
+  return (
+    <div className="mt-6 text-left">
+      <div className="mb-3 flex items-center justify-between gap-2">
+        <div className="min-w-0">
+          <h3 className="text-[13px] font-semibold text-cream">Matched CVEs</h3>
+          <p className="mt-1 text-[11px] leading-relaxed text-muted">
+            Vulnerabilities matching this host&rsquo;s detected technologies.
+          </p>
+        </div>
+        <span className="shrink-0 rounded-md bg-warn/20 px-2 py-0.5 font-mono text-[10px] font-bold text-warn">
+          {cves.length}
+        </span>
+      </div>
+
+      <div className="overflow-hidden rounded-lg border border-line text-left">
+        <div className="grid grid-cols-[minmax(0,1fr)_auto_auto] items-center gap-x-2 border-b border-line bg-[var(--table-header-bg)] px-2 py-1 text-[10px] font-semibold uppercase tracking-wider text-muted">
+          <div>CVE</div>
+          <div>Severity</div>
+          <div>Score</div>
+        </div>
+        <div className="divide-y divide-line">
+          {cves.slice(0, 50).map((c) => (
+            <Link
+              key={c.cveId}
+              href={`/intel/cve/${encodeURIComponent(c.cveId)}`}
+              className="group grid grid-cols-[minmax(0,1fr)_auto_auto] items-center gap-x-2 px-2 py-1 transition-colors hover:bg-white/5"
+            >
+              <div className="min-w-0 truncate font-mono text-[10px] text-cream group-hover:text-accent">
+                {c.cveId}
+              </div>
+              <div
+                className={`justify-self-start rounded px-1.5 py-0.5 text-[9px] font-semibold ${severityBadgeClass(c.severity)}`}
+              >
+                {c.severity ?? "—"}
+              </div>
+              <div className="justify-self-end font-mono text-[10px] text-cream tabular-nums">
+                {c.score != null ? c.score.toFixed(1) : "—"}
+              </div>
+            </Link>
+          ))}
+        </div>
+      </div>
     </div>
   );
 }
