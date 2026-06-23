@@ -1,8 +1,8 @@
 # SCOPTIX
 
-SCOPTIX is a passive reconnaissance and attack surface exploration tool that helps analysts identify exposed content, potentially sensitive information, and application endpoints that may warrant further investigation. It aggregates subdomains, URLs, IP addresses, and archived web assets from external data sources to support security analysis and exposure discovery.
+SCOPTIX is a passive reconnaissance and exposure discovery tool that helps analysts identify exposed content, potentially sensitive information, application endpoints, and other assets that may warrant further investigation. It aggregates subdomains, URLs, IP addresses, archived web assets, and related metadata from external data sources to support security analysis.
 
-Data is currently sourced from **VirusTotal** and the Internet Archive's **Wayback Machine**.
+Data is sourced from **VirusTotal** and the Internet Archive's **Wayback Machine**. Optional enrichment, when enabled, uses **Wappalyzer** for technology fingerprinting and a local CVE database from **NVD** for CVE correlation.
 
 ![Dashboard — target overview and scan history](./img/1-dashboard.png)
 
@@ -10,10 +10,12 @@ Data is currently sourced from **VirusTotal** and the Internet Archive's **Wayba
 
 ## Key Features
 
-* **Asset Discovery:** Discover subdomains, URLs, IP addresses, and archived web assets from multiple external data sources. IP resolutions come from VirusTotal passive DNS (hostname ↔ IP history for the apex and discovered subdomains). Each scan keeps an observed IP list for that run; the target view aggregates the same addresses across all scans with hostname timelines and historical resolution detail.
+* **Asset Discovery:** Discover subdomains, URLs, IP addresses, and archived web assets from VirusTotal and the Wayback Machine. IP resolutions come from VirusTotal passive DNS (hostname ↔ IP history for the apex and discovered subdomains). Each scan keeps an observed IP list for that run; the target view aggregates the same addresses across all scans with hostname timelines and historical resolution detail.
 * **Exposure Discovery:** Identify potentially exposed credentials, API keys, tokens, cloud secrets, and configuration artifacts across discovered assets using customizable detection rules.
 * **Asset Categorization:** Automatically group discovered URLs into extension categories you define in Settings—create categories and map pathname suffixes (e.g. `.pdf`, `.js`, `.zip`) so assets are organized for review.
-* **Deep Scan:** Optionally download JavaScript files when starting a scan and analyze their contents against your detection rules, in addition to the URL-string checks applied to every URL.
+* **Technology Fingerprinting:** Optionally identify technologies used across discovered web assets via Wappalyzer. Enable in **Settings → API & network**.
+* **CVE Correlation:** Optionally correlate identified technology versions against a local CVE database from NVD. Enable **CVE Match** in **Settings → API & network** (fetch CVE data there first).
+* **Deep Scan:** Optionally fetch JavaScript files from live hosts and analyze their contents against your detection rules. Enable when starting a new scan.
 * **Endpoint Discovery:** Explore parameters, application endpoints, authentication-related resources, and other security-relevant application assets.
 * **Scan Comparison:** Track changes across scans and quickly identify newly discovered subdomains, URLs, IP addresses, archived assets, and exposure findings.
 
@@ -43,11 +45,12 @@ Real-world examples discussed in these presentations include:
 
 ## Typical Workflow
 
-1. Discover subdomains, URLs, and IP resolution history from external data sources.
-2. Review identified assets (including per-IP hostname history on the target) and archived content.
-3. Analyze URLs and content for exposed credentials, secrets, and sensitive files.
-4. Investigate application endpoints and other security-relevant findings.
-5. Compare results across scans to identify newly discovered exposures.
+1. Discover subdomains, URLs, IP resolution history, and archived assets from VirusTotal and the Wayback Machine.
+2. Optionally fingerprint technologies using Wappalyzer.
+3. Optionally correlate identified technologies against known CVEs using CVE Match.
+4. Analyze discovered URLs for exposed credentials, secrets, and sensitive files; optionally fetch and analyze live content (deep scan).
+5. Investigate application endpoints and other security-relevant findings.
+6. Compare results across scans to identify newly discovered exposures.
 
 -----
 
@@ -55,7 +58,11 @@ Real-world examples discussed in these presentations include:
 
 - **Not for production:** This tool focuses on functionality over hardened security. Use it exclusively in isolated, trusted environments.
 - **No built-in authentication:** Anyone with network access can view findings and trigger scans. Do NOT expose SCOPTIX to the public internet without your own access controls (e.g., VPN, reverse proxy).
-- **Third-party APIs and data:** VirusTotal and the Internet Archive impose their own terms, rate limits, and acceptable-use policies. This repository orchestrates queries and stores results locally; it is not a redistribution of upstream datasets.
+- **Third-party APIs and data:** VirusTotal, the Internet Archive, and NVD impose their own terms, rate limits, and acceptable-use policies. This repository orchestrates queries and stores results locally; it is not a redistribution of upstream datasets.
+- **Optional live-host contact:** Wappalyzer and deep scan fetch content from discovered hosts when enabled. Ensure you have authorization before enabling them against a target.
+- **Technology fingerprinting limitations:** Technology identification relies on observable characteristics and may not always be accurate.
+- **CVE correlation is informational:** CVE matches are derived from identified technologies and versions. A match does not confirm that a vulnerability is present, reachable, or exploitable.
+- **No active vulnerability scanning:** SCOPTIX does not perform active vulnerability scanning, vulnerability verification, or exploit attempts of discovered assets.
 
 -----
 
@@ -84,7 +91,7 @@ NEXT_PUBLIC_BASE_PATH="/your-base-path"
 
 **Tested platform:** Ubuntu 26.04 (Docker and local dev workflows above). Other Linux distributions and macOS may work but are not routinely verified.
 
-Optional: SOCKS proxy (if outbound API or deep-fetch traffic must route through a proxy)
+Optional: SOCKS proxy (if outbound API, Wappalyzer, or deep-fetch traffic must route through a proxy)
 
 > **Note on VirusTotal API Keys:**
 >
@@ -184,7 +191,7 @@ npm run dev:all
 ### 4. First scan
 
 1. Open **Settings → API & network** and add at least one VirusTotal API key (unless seeded).
-2. Confirm **VirusTotal** (and optionally **Wayback Machine**) are enabled under scan engines.
+2. Enable scan engines as needed: **VirusTotal**, **Wayback Machine**, **Wappalyzer**, and optionally **CVE Match**. For CVE Match, fetch CVE data in the CVE section first.
 3. Go to **Scans**, enter a domain, optionally enable deep scan, and start.
 
 ## Docker & permissions
@@ -219,7 +226,7 @@ The schema ships as a single Prisma migration: `prisma/migrations/0001_init`. Fr
 
 ## Scan pipeline (overview)
 
-When both engines are enabled for a root-domain scan, the worker roughly follows:
+For a root-domain scan with all engines enabled, the worker roughly follows:
 
 1. **VirusTotal — apex:** domain report, URL harvest, and passive DNS resolutions for the root domain.
 2. **VirusTotal — subdomains:** BFS expansion up to `maxSubdomains` (URLs and passive DNS per hostname).
@@ -227,7 +234,9 @@ When both engines are enabled for a root-domain scan, the worker roughly follows
 4. **Wayback — apex:** CDX URL list for the root domain.
 5. **Wayback — subdomains:** CDX per discovered subdomain (rate-limited).
 6. **Consolidate:** dedupe URLs, assign extension categories, update target caches.
-7. **Analysis:** regex scan on URL strings; optional deep fetch + body scan for selected categories.
+7. **Wappalyzer (optional):** fingerprint technologies across discovered web assets via live HTTP requests.
+8. **CVE Match (optional):** correlate identified technologies and versions against the locally stored CVE database.
+9. **Analysis:** regex scan on URL strings (no live fetch); optional deep fetch + body scan for selected categories when deep scan is enabled.
 
 Subdomain-only scans skip full apex expansion but still run enabled engines against the input hostname.
 
