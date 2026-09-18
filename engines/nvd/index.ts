@@ -31,6 +31,8 @@ export type NvdCveParsed = {
 
 export type NvdPageResult = {
   status: number;
+  /** NVD's diagnostic from the `message` response header, e.g. "Invalid apiKey.". */
+  message: string | null;
   totalResults: number;
   startIndex: number;
   resultsPerPage: number;
@@ -181,7 +183,17 @@ export async function fetchNvdCvePage(params: {
     });
 
     if (res.status !== 200 || typeof res.data !== "object" || res.data == null) {
-      return { status: res.status, totalResults: 0, startIndex: params.startIndex, resultsPerPage: 0, cves: [] };
+      // NVD explains every rejection in the `message` response header
+      // (e.g. "Invalid apiKey.", "Date range cannot exceed 120 days.").
+      const raw = res.headers["message"];
+      return {
+        status: res.status,
+        message: typeof raw === "string" && raw.length > 0 ? raw : null,
+        totalResults: 0,
+        startIndex: params.startIndex,
+        resultsPerPage: 0,
+        cves: [],
+      };
     }
 
     const data = res.data as {
@@ -198,13 +210,58 @@ export async function fetchNvdCvePage(params: {
 
     return {
       status: 200,
+      message: null,
       totalResults: data.totalResults ?? 0,
       startIndex: data.startIndex ?? params.startIndex,
       resultsPerPage: data.resultsPerPage ?? cves.length,
       cves,
     };
-  } catch {
-    return { status: 599, totalResults: 0, startIndex: params.startIndex, resultsPerPage: 0, cves: [] };
+  } catch (e) {
+    // Network/timeout failure — distinguishable from an HTTP rejection so the
+    // caller can still retry it.
+    return {
+      status: 599,
+      message: e instanceof Error ? e.message : null,
+      totalResults: 0,
+      startIndex: params.startIndex,
+      resultsPerPage: 0,
+      cves: [],
+    };
+  }
+}
+
+/**
+ * Verify an NVD API key with a single 1-result request. NVD answers a bad key
+ * with 404 + `message: Invalid apiKey.` while a good key returns 200, so this
+ * is the only reliable check — key format alone proves nothing (NVD keys are
+ * UUIDs, but a well-formed UUID is not necessarily a valid key).
+ */
+export async function verifyNvdApiKey(
+  apiKey: string,
+  proxyUrl?: string | null,
+): Promise<{ ok: boolean; message: string | null }> {
+  const agent = proxyUrl ? new SocksProxyAgent(proxyUrl) : undefined;
+  try {
+    const res = await axios.get(NVD_CVE_API, {
+      params: { resultsPerPage: 1 },
+      paramsSerializer: { encode: encodeURIComponent },
+      headers: {
+        "User-Agent":
+          "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/126.0.0.0 Safari/537.36",
+        Accept: "application/json",
+        apiKey,
+      },
+      timeout: 30_000,
+      httpsAgent: agent,
+      httpAgent: agent,
+      proxy: false,
+      validateStatus: () => true,
+    });
+    if (res.status === 200) return { ok: true, message: null };
+    const raw = res.headers["message"];
+    return { ok: false, message: typeof raw === "string" && raw.length > 0 ? raw : `HTTP ${res.status}` };
+  } catch (e) {
+    return { ok: false, message: e instanceof Error ? e.message : "Network error" };
   }
 }
 
