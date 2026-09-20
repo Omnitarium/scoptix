@@ -5,7 +5,44 @@ type Rule = {
   priority: number; // Lower number = higher priority (runs first to claim overlaps)
   re: RegExp;
   prefilters?: string[]; // If provided, text MUST contain at least one of these strings (case-insensitive if regex is)
+  validate?: (value: string) => boolean; // Reject captures that cannot be a real secret (code fragments, prose)
 };
+
+/**
+ * A captured value is plausible as a secret when it is an opaque token: no code
+ * punctuation, and at least one digit mixed with letters, or a long hex/base64 run.
+ * Minified JS and markup routinely satisfy a bare `key=value` shape without this gate.
+ */
+function looksLikeSecretValue(value: string): boolean {
+  if (/[(),;{}[\]!<>?'"|&$\\`\s]/.test(value)) return false;
+  if (/^[0-9a-f]{32,}$/i.test(value)) return true;
+  const hasDigit = /\d/.test(value);
+  const hasLetter = /[A-Za-z]/.test(value);
+  if (hasDigit && hasLetter && value.length >= 16) return true;
+  if (/[+/=]/.test(value) && hasDigit) return true;
+  return false;
+}
+
+/**
+ * Card numbers satisfy the Luhn checksum. Without this gate the rule matches
+ * arbitrary 13–16 digit constants, e.g. `4503599627370496` (2^52) in bundled JS.
+ */
+function passesLuhnCheck(value: string): boolean {
+  const digits = value.replace(/\D/g, "");
+  if (digits.length < 13) return false;
+  let sum = 0;
+  let double = false;
+  for (let i = digits.length - 1; i >= 0; i--) {
+    let d = digits.charCodeAt(i) - 48;
+    if (double) {
+      d *= 2;
+      if (d > 9) d -= 9;
+    }
+    sum += d;
+    double = !double;
+  }
+  return sum % 10 === 0;
+}
 
 // RULES are sorted alphabetically by 'type' for easy reading/maintenance.
 const RULES: Rule[] = [
@@ -24,7 +61,9 @@ const RULES: Rule[] = [
   {
     type: "basic-auth-url",
     priority: 20,
-    re: /https?:\/\/[^\s:@/]+:([^\s:@/]{3,})@[^\s:/?#]+/gi,
+    // Reject the `mailto:` scheme: `http://mailto:someone@host/` is a mailto link,
+    // not a basic-auth credential.
+    re: /https?:\/\/(?!mailto:)[^\s:@/]+:([^\s:@/]{3,})@[^\s:/?#]+/gi,
     prefilters: ["http://", "https://", "@"],
   },
   {
@@ -43,12 +82,17 @@ const RULES: Rule[] = [
   {
     type: "credential-like",
     priority: 100, // Very generic, lowest priority
-    re: /(?:password|passwd|pwd|secret|token|api[_-]?key)\s*[=:]\s*([^\s&"']{8,80})/gi,
+    // Value charset excludes code punctuation (but allows `@`, common in passwords);
+    // the validate hook then requires an opaque-token shape. Without both, minified
+    // JS yields ~99% false positives.
+    re: /(?:password|passwd|pwd|secret|token|api[_-]?key)\s*[=:]\s*["']?([A-Za-z0-9+/=_\-@]{12,120})["']?/gi,
+    validate: looksLikeSecretValue,
   },
   {
     type: "credit-card",
     priority: 60,
     re: /\b(?:4[0-9]{12}(?:[0-9]{3})?|5[1-5][0-9]{14}|3[47][0-9]{13})\b/g,
+    validate: passesLuhnCheck,
   },
   {
     type: "db-connection",
@@ -59,7 +103,9 @@ const RULES: Rule[] = [
   {
     type: "email",
     priority: 90,
-    re: /[a-z0-9._%+-]+@[a-z0-9.-]+\.[a-z]{2,}/gi,
+    // A URL userinfo (`http://user@host/`) and a `mailto:` link are not email
+    // addresses; the lookbehind rejects both without touching real addresses.
+    re: /(?<![\w.%+\-/:])[a-z0-9._%+-]+@[a-z0-9.-]+\.[a-z]{2,}/gi,
     prefilters: ["@"],
   },
   {
@@ -89,6 +135,8 @@ const RULES: Rule[] = [
   {
     type: "hex-secret",
     priority: 90, // Generic, run after specifics
+    // Snippet keeps the `key=` prefix (full match). Changing this would give existing
+    // rows a new dedup identity and duplicate them on the next scan.
     re: /(?:key|secret|token|apikey|api_key|access_key|auth)\s*[=:]\s*[0-9a-f]{32,}/gi,
   },
   {
@@ -189,11 +237,14 @@ export function runSensitiveRegexScan(text: string): RegexHit[] {
       );
 
       if (!isOverlap) {
+        const value = m[1] !== undefined ? m[1] : m[0];
+        if (r.validate && !r.validate(value)) continue;
+
         claimedRanges.push({ start: matchStart, end: matchEnd });
-        
+
         // Use capture group 1 if present (e.g. for credential-like where we don't want the "key=" prefix)
         // Otherwise use the full match.
-        const snippet = (m[1] !== undefined ? m[1] : m[0]).slice(0, 240);
+        const snippet = value.slice(0, 240);
         hits.push({ type: r.type, snippet });
       }
     }
